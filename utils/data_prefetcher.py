@@ -15,10 +15,10 @@ class data_prefetcher():
 
     def preload(self):
         try:
-            self.next_input, self.next_target = next(self.loader)
+            self.next_input, self.next_mask = next(self.loader)
         except StopIteration:
             self.next_input = None
-            self.next_target = None
+            self.next_mask = None
             return
         # if record_stream() doesn't work, another option is to make sure device inputs are created
         # on the main stream.
@@ -29,7 +29,7 @@ class data_prefetcher():
         # self.stream.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(self.stream):
             self.next_input = self.next_input.cuda(non_blocking=True)
-            self.next_target = self.next_target.cuda(non_blocking=True)
+            self.next_mask = self.next_mask.cuda(non_blocking=True)
             # more code for the alternative if record_stream() doesn't work:
             # copy_ will record the use of the pinned source tensor in this side stream.
             # self.next_input_gpu.copy_(self.next_input, non_blocking=True)
@@ -47,10 +47,10 @@ class data_prefetcher():
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)
         input = self.next_input
-        target = self.next_target
+        mask = self.next_mask
         if input is not None:
             input.record_stream(torch.cuda.current_stream())
-        if target is not None:
-            target.record_stream(torch.cuda.current_stream())
+        if mask is not None:
+            mask.record_stream(torch.cuda.current_stream())
         self.preload()
-        return input, target
+        return input, mask

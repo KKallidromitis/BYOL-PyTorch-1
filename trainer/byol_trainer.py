@@ -14,10 +14,10 @@ from apex import amp
 
 from model import BYOLModel
 from optimizer import LARS
-from data import ImageNetLoader
+from data import ImageLoader
 from utils import params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-
+from losses import DetconInfoNCECriterion
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -47,7 +47,8 @@ class BYOLTrainer():
         self.max_lr = base_lr * self.global_batch_size
 
         self.base_mm = self.config['model']['base_momentum']
-
+        self.forward_loss = DetconInfoNCECriterion(config)
+        
         """construct the whole network"""
         self.resume_path = self.config['checkpoint']['resume_path']
         if torch.cuda.is_available():
@@ -74,7 +75,7 @@ class BYOLTrainer():
         """get data loader"""
         self.stage = self.config['stage']
         assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for BYOL training')
-        self.data_ins = ImageNetLoader(self.config)
+        self.data_ins = ImageLoader(self.config)
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
@@ -149,13 +150,6 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
 
-    def forward_loss(self, preds, targets):
-        bz = preds.size(0)
-        preds_norm = F.normalize(preds, dim=1)
-        targets_norm = F.normalize(targets, dim=1)
-        loss = 2 - 2 * (preds_norm * targets_norm).sum() / bz
-        return loss
-
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()
@@ -170,27 +164,28 @@ class BYOLTrainer():
         self.data_ins.set_epoch(epoch)
 
         prefetcher = data_prefetcher(self.train_loader)
-        images, _ = prefetcher.next()
+        images, masks = prefetcher.next()
         i = 0
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)
             self.adjust_mm(self.steps)
             self.steps += 1
-
+            #import ipdb;ipdb.set_trace()
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
+            
             # measure data loading time
             data_time.update(time.time() - end)
 
             # forward
             tflag = time.time()
-            q, target_z = self.model(view1, view2, self.mm)
+            q, target_z, mask_ids = self.model(view1, view2, self.mm, masks)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(q, target_z)
+            loss = self.forward_loss(target_z, q, mask_ids, mask_ids)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':

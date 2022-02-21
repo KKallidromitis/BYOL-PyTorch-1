@@ -19,13 +19,14 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/admin/workspace/shared/imagenet/"
+  image_dir: "/home/kkallidromitis/data/sample/"
+  mask_type: "fh"
   resize_size: 224
   data_workers: 8
   train_batch_size: 128
   val_batch_size: 64
   dual_views: true
-  num_examples: 1281167
+  num_examples: 12000 #1281167
 
 optimizer:
   type: lars
@@ -36,11 +37,15 @@ optimizer:
   warmup_epochs: 10
   exclude_bias_and_bn: true
 
+loss:
+  temperature: 0.1
+  mask_rois: 16
+
 checkpoint:
   time_stamp:
   resume_path:
   save_epoch: 1
-  ckpt_path: "ckpt/byol_imagenet/{}/{}_{}.pth.tar"
+  ckpt_path: "ckpt/detcon_b_imagenet/{}/{}_{}.pth.tar"
 
 log:
   log_step: 10
