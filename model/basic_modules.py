@@ -4,11 +4,11 @@ import torch.nn as nn
 from torchvision import models
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
         super().__init__()
 
         self.l1 = nn.Linear(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.bn1 = nn.BatchNorm1d(mask_roi)
         self.relu1 = nn.ReLU(inplace=True)
         self.l2 = nn.Linear(hidden_dim, output_dim)
 
@@ -26,7 +26,7 @@ class EncoderwithProjection(nn.Module):
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
         base_encoder = models.__dict__[net_name](pretrained=pretrained)
-        self.encoder = nn.Sequential(*list(base_encoder.children())[:-1])
+        self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
 
         # projection
         input_dim = config['model']['projection']['input_dim']
@@ -34,9 +34,16 @@ class EncoderwithProjection(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x):
-        x = self.encoder(x)
-        x = torch.flatten(x, 1)
+    def forward(self, x, masks):
+        x = self.encoder(x) #(B, 2048, 7, 7)
+        
+        # Detcon mask multiply
+        bs, emb, emb_x, emb_y  = x.shape
+        masks_area = masks.sum(axis=-1, keepdims=True)
+        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
+        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
+        x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
+        
         x = self.projetion(x)
         return x
 

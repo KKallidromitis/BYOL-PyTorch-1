@@ -1,10 +1,11 @@
 #-*- coding:utf-8 -*-
 import torch
+import os
 from torchvision import datasets
-from .byol_transform import MultiViewDataInjector, get_transform
+from .byol_transform import MultiViewDataInjector, get_transform, SSLMaskDataset
 
 
-class ImageNetLoader():
+class ImageLoader():
     def __init__(self, config):
         self.image_dir = config['data']['image_dir']
         self.num_replicas = config['world_size']
@@ -13,6 +14,7 @@ class ImageNetLoader():
         self.resize_size = config['data']['resize_size']
         self.data_workers = config['data']['data_workers']
         self.dual_views = config['data']['dual_views']
+        self.mask_type = config['data']['mask_type']
 
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
@@ -34,14 +36,15 @@ class ImageNetLoader():
         return data_loader
 
     def get_dataset(self, stage):
-        image_dir = self.image_dir + f"imagenet_{'train' if stage in ('train', 'ft') else 'val'}"
+        #import ipdb;ipdb.set_trace()
+        image_dir = os.path.join(self.image_dir,'images', f"{'train' if stage in ('train', 'ft') else 'val'}")
+        mask_file = os.path.join(self.image_dir,'masks',stage+'_img_to_'+self.mask_type+'.pkl')
+        
         transform1 = get_transform(stage)
-        if self.dual_views:
-            transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
-            transform = MultiViewDataInjector([transform1, transform2])
-        else:
-            transform = transform1
-        dataset = datasets.ImageFolder(image_dir, transform=transform)
+        transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
+        transform = MultiViewDataInjector([transform1, transform2])
+        
+        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform)
         return dataset
 
     def set_epoch(self, epoch):

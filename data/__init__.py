@@ -1,1 +1,1 @@
-from .imagenet_loader import ImageNetLoader
+from .image_loader import ImageLoader

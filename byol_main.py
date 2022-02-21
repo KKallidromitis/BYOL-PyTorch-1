@@ -16,7 +16,7 @@ def run_task(config):
         local_rank = int(os.environ.get('LOCAL_RANK', '0'))
         config.update({'world_size': world_size, 'rank': rank, 'local_rank': local_rank})
 
-        dist.init_process_group(backend="nccl", world_size=world_size, rank=rank)
+        dist.init_process_group(backend="gloo", world_size=world_size, rank=rank)
         logging.info(f'world_size {world_size}, gpu {local_rank}, rank {rank} init done.')
     else:
         config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
