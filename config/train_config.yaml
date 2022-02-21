@@ -33,7 +33,7 @@ optimizer:
   base_lr: 0.3
   momentum: 0.9
   weight_decay: 1.0e-6
-  total_epochs: 300
+  total_epochs: 100
   warmup_epochs: 10
   exclude_bias_and_bn: true
 
@@ -45,7 +45,7 @@ checkpoint:
   time_stamp:
   resume_path:
   save_epoch: 1
-  ckpt_path: "ckpt/detcon_b_imagenet/{}/{}_{}.pth.tar"
+  ckpt_path: "ckpt/detconb/{}/{}_{}.pth.tar"
 
 log:
   log_step: 10

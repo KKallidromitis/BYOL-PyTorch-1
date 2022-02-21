@@ -1,4 +1,5 @@
 #-*- coding:utf-8 -*-
+import os
 import time
 import datetime
 
@@ -22,9 +23,7 @@ from losses import DetconInfoNCECriterion
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
-        self.time_stamp = self.config['checkpoint'].get('time_stamp',
-            datetime.datetime.now().strftime('%m%d_%H-%M'))
-
+           
         """device parameters"""
         self.world_size = self.config['world_size']
         self.rank = self.config['rank']
@@ -60,9 +59,18 @@ class BYOLTrainer():
         self.construct_model()
 
         """save checkpoint path"""
+        self.time_stamp = self.config['checkpoint']['time_stamp']
+        if self.time_stamp == None:
+            self.time_stamp = datetime.datetime.now().strftime('%m_%d_%H-%M')
+            
         self.save_epoch = self.config['checkpoint']['save_epoch']
         self.ckpt_path = self.config['checkpoint']['ckpt_path'].format(
             self.time_stamp, self.config['model']['backbone']['type'], {})
+
+        try:
+            os.makedirs('/'.join(self.ckpt_path.split('/')[:-1]))
+        except:
+            pass
 
         """log tools in the running phase"""
         self.steps = 0
