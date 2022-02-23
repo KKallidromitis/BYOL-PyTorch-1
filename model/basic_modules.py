@@ -2,7 +2,6 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-from utils.mask_utils import convert_binary_mask,sample_masks
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -40,16 +39,13 @@ class EncoderwithProjection(nn.Module):
         
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
-        binary_mask = convert_binary_mask(masks)
-        sample_mask,mask_ids = sample_masks(binary_mask)
-        
-        masks_area = sample_mask.sum(axis=-1, keepdims=True)
-        smpl_masks = sample_mask / torch.maximum(masks_area, torch.ones_like(masks_area))
+        masks_area = masks.sum(axis=-1, keepdims=True)
+        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
         embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
         x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
         x = self.projetion(x)
-        return x, mask_ids
+        return x
 
 class Predictor(nn.Module):
     def __init__(self, config):
@@ -61,5 +57,5 @@ class Predictor(nn.Module):
         output_dim = config['model']['predictor']['output_dim']
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x, mask_ids):
-        return self.predictor(x), mask_ids
+    def forward(self, x):
+        return self.predictor(x)

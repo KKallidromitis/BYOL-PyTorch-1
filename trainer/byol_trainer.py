@@ -194,11 +194,11 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z, pinds, tinds = self.model(view1, view2, self.mm, masks)
+            q, target_z, mask_ids = self.model(view1, view2, self.mm, masks)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(target_z, q, pinds, tinds)
+            loss = self.forward_loss(target_z, q, mask_ids, mask_ids)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
