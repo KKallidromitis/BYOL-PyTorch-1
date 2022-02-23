@@ -23,8 +23,8 @@ data:
   mask_type: "fh"
   resize_size: 224
   data_workers: 8
-  train_batch_size: 128
-  val_batch_size: 64
+  train_batch_size: 32
+  val_batch_size: 32
   dual_views: true
   num_examples: 12000 #1281167
 
@@ -44,7 +44,7 @@ loss:
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 1
+  save_epoch: 5
   ckpt_path: "ckpt/detconb/{}/{}_{}.pth.tar"
 
 log:

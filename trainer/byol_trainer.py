@@ -70,9 +70,7 @@ class BYOLTrainer():
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         
-        #wandb init
-        wandb.init(project="detcon_byol")
-        wandb.run.name = save_dir
+        #wandb.init(project="detcon_byol",name = save_dir)
         
         try:
             os.makedirs(save_dir)
@@ -196,11 +194,11 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z, mask_ids = self.model(view1, view2, self.mm, masks)
+            q, target_z, pinds, tinds = self.model(view1, view2, self.mm, masks)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(target_z, q, mask_ids, mask_ids)
+            loss = self.forward_loss(target_z, q, pinds, tinds)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -221,9 +219,10 @@ class BYOLTrainer():
 
             batch_time.update(time.time() - end)
             end = time.time()
-
+             
             # Print log info
             if self.gpu == 0 and self.steps % self.log_step == 0:
+                '''
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
                 wandb.log({
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
@@ -234,7 +233,7 @@ class BYOLTrainer():
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
-                
+                '''
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'
@@ -247,7 +246,7 @@ class BYOLTrainer():
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
             images, _ = prefetcher.next()
-            
+        '''    
         # Log averages at end of Epoch
         wandb.log({
             'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
@@ -256,4 +255,4 @@ class BYOLTrainer():
             'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
             'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
         })
-        
+        '''

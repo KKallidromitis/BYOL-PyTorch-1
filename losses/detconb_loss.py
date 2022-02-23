@@ -24,7 +24,8 @@ class DetconInfoNCECriterion(nn.Module):
 
     def forward(self, target, pred, tind, pind):        
         #Note: We don't gather from all gpus
-        #import ipdb;ipdb.set_trace()
+        import ipdb;ipdb.set_trace()
+
         target1,target2 = target[:self.batch_size],target[self.batch_size:]
         pred1,pred2 = pred[:self.batch_size],pred[self.batch_size:]
         tind1,tind2 = tind[:self.batch_size].to('cuda'),tind[self.batch_size:].to('cuda')

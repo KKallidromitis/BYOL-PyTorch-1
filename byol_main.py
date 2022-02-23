@@ -35,6 +35,6 @@ def main():
     run_task(config)
 
 if __name__ == "__main__":
-    print(f'Pytorch version: {torch.__version__}')
-    print(f'os environ: {os.environ}')
+    #print(f'Pytorch version: {torch.__version__}')
+    #print(f'os environ: {os.environ}')
     main()

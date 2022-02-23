@@ -1,7 +1,6 @@
 #-*- coding:utf-8 -*-
 import torch
 from .basic_modules import EncoderwithProjection, Predictor
-from utils.mask_utils import convert_binary_mask,sample_masks
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -35,15 +34,12 @@ class BYOLModel(torch.nn.Module):
         #import ipdb;ipdb.set_trace()
         
         masks = torch.cat([ masks[:,i,:,:,:] for i in range(masks.shape[1])])
-        binary_mask = convert_binary_mask(masks)
-        sample_mask,mask_ids = sample_masks(binary_mask)
-        
-        
-        q = self.predictor(self.online_network(torch.cat([view1, view2], dim=0),sample_mask))
+        q, pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks))
 
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z = self.target_network(torch.cat([view2, view1], dim=0),sample_mask).detach().clone()
-
-        return q, target_z, mask_ids
+            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks)
+            target_z = target_z.detach().clone()
+            
+        return q, target_z, pinds, tinds
