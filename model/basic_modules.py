@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
+from utils.mask_utils import convert_binary_mask,sample_masks
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -33,9 +34,39 @@ class EncoderwithProjection(nn.Module):
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+        #self._get_masknet()
+        
+    def _get_masknet(self):
+        #import ipdb;ipdb.set_trace()
+        
+        import torch.nn as nn
+        import torch.nn.functional as F
 
-    def forward(self, x, masks):
+        class Net(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.conv1 = nn.Conv2d(2048, 2048, 1)
+                self.conv2 = nn.Conv2d(2048, 2048, 1)
+                self.conv3 = nn.Conv2d(2048, 16, 1)
+                #self.norm = nn.BatchNorm2d(16, 16)
+
+            def forward(self, x):
+                #y = F.relu(selfs.norm(F.relu(self.conv1(x))))
+                y = self.conv3(F.relu(self.conv2(F.relu(self.conv1(x)))))
+                return y
+            
+        self.masknet = Net()
+        
+    def forward(self, x, masks, mnet=False):
+        #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
+                
+        binary_masks = convert_binary_mask(masks)
+        masks,mask_ids = sample_masks(binary_masks)
+        
+        #if mnet:
+        #    pertubation = torch.reshape(self.masknet(x),(-1, 16, 49))
+        #    masks = pertubation + masks.to('cuda')
         
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
@@ -45,7 +76,7 @@ class EncoderwithProjection(nn.Module):
         x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
         x = self.projetion(x)
-        return x
+        return x, mask_ids
 
 class Predictor(nn.Module):
     def __init__(self, config):
@@ -57,5 +88,5 @@ class Predictor(nn.Module):
         output_dim = config['model']['predictor']['output_dim']
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x):
-        return self.predictor(x)
+    def forward(self, x, mask_ids):
+        return self.predictor(x), mask_ids

@@ -28,13 +28,13 @@ class DetconInfoNCECriterion(nn.Module):
 
         target1,target2 = target[:self.batch_size],target[self.batch_size:]
         pred1,pred2 = pred[:self.batch_size],pred[self.batch_size:]
-        tind1,tind2 = tind[:self.batch_size].to('cuda'),tind[self.batch_size:].to('cuda')
-        pind1,pind2 = pind[:self.batch_size].to('cuda'),pind[self.batch_size:].to('cuda')
+        tind1,tind2 = tind[:self.batch_size],tind[self.batch_size:]
+        pind1,pind2 = pind[:self.batch_size],pind[self.batch_size:]
         
-        same_obj_aa = self.make_same_obj(pind1, tind1).to('cuda')
-        same_obj_ab = self.make_same_obj(pind1, tind2).to('cuda')
-        same_obj_ba = self.make_same_obj(pind2, tind1).to('cuda')
-        same_obj_bb = self.make_same_obj(pind2, tind2).to('cuda')
+        same_obj_aa = self.make_same_obj(pind1, tind1)
+        same_obj_ab = self.make_same_obj(pind1, tind2)
+        same_obj_ba = self.make_same_obj(pind2, tind1)
+        same_obj_bb = self.make_same_obj(pind2, tind2)
         
         pred1 = torch.nn.functional.normalize(pred1,dim=-1)
         pred2 = torch.nn.functional.normalize(pred2,dim=-1)
@@ -43,8 +43,8 @@ class DetconInfoNCECriterion(nn.Module):
 
         labels_local = torch.nn.functional.one_hot(torch.tensor(np.arange(self.batch_size))
                                                    ,self.batch_size).unsqueeze(1).unsqueeze(3).to('cuda')
-        labels_ext = torch.nn.functional.one_hot(torch.tensor(np.arange(self.batch_size)),
-                                                 self.batch_size * 2).unsqueeze(1).unsqueeze(3).to('cuda')
+        #labels_ext = torch.nn.functional.one_hot(torch.tensor(np.arange(self.batch_size)),
+        #                                        self.batch_size * 2).unsqueeze(1).unsqueeze(3).to('cuda')
 
         logits_aa = torch.einsum("abk,uvk->abuv", pred1, target1) / self.temperature
         logits_bb = torch.einsum("abk,uvk->abuv", pred2, target2) / self.temperature
@@ -73,8 +73,8 @@ class DetconInfoNCECriterion(nn.Module):
         labels_0 = labels_0 / torch.max(num_positives_0, torch.ones(num_positives_0.shape).to('cuda'))
         labels_1 = labels_1 / torch.max(num_positives_1, torch.ones(num_positives_1.shape).to('cuda'))
 
-        obj_area_0 = torch.sum(self.make_same_obj(pind1, tind1), axis=[2, 3])
-        obj_area_1 = torch.sum(self.make_same_obj(pind2, tind2), axis=[2, 3])
+        obj_area_0 = torch.sum(self.make_same_obj(pind1, pind1), axis=[2, 3])
+        obj_area_1 = torch.sum(self.make_same_obj(pind2, pind2), axis=[2, 3])
 
         weights_0 = torch.greater(num_positives_0[..., 0], 1e-3).float()
         weights_0 = weights_0 / obj_area_0

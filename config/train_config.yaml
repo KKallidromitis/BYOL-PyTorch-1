@@ -24,7 +24,7 @@ data:
   resize_size: 224
   data_workers: 8
   train_batch_size: 32
-  val_batch_size: 32
+  val_batch_size: 64
   dual_views: true
   num_examples: 12000 #1281167
 
@@ -33,7 +33,7 @@ optimizer:
   base_lr: 0.3
   momentum: 0.9
   weight_decay: 1.0e-6
-  total_epochs: 100
+  total_epochs: 70
   warmup_epochs: 10
   exclude_bias_and_bn: true
 
@@ -44,7 +44,7 @@ loss:
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 5
+  save_epoch: 10
   ckpt_path: "ckpt/detconb/{}/{}_{}.pth.tar"
 
 log:
