@@ -1,0 +1,24 @@
+_BASE_: "../Base-RCNN-FPN.yaml"
+MODEL:
+  PIXEL_MEAN: [123.675, 116.280, 103.530]
+  PIXEL_STD: [58.395, 57.120, 57.375]
+  WEIGHTS: "See Instructions (ADD PATH TO PKL WEIGHTS!)"
+  MASK_ON: True
+  RESNETS:
+    STRIDE_IN_1X1: False
+INPUT:
+  FORMAT: "RGB"
+
+# Following DetCon Evaluation Protocol
+SOLVER:
+  # Global batch size
+  IMS_PER_BATCH: 64
+  # Detcon trained COCO on 16 tpus
+  REFERENCE_WORLD_SIZE: 16
+  BASE_LR: 0.3
+  MOMENTUM: 0.9
+  WEIGHT_DECAY: 0.00004
+  #Warmup lr lineary for 500 iter
+  WARMUP_ITERS: 500
+  #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
+  GAMMA : 10

@@ -70,7 +70,8 @@ class BYOLTrainer():
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         
-        #wandb.init(project="detcon_byol",name = save_dir)
+        if self.gpu==0:
+            wandb.init(project="detcon_byol",name = save_dir)
         
         try:
             os.makedirs(save_dir)
@@ -194,11 +195,11 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z, mask_ids = self.model(view1, view2, self.mm, masks)
+            q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'))
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(target_z, q, mask_ids, mask_ids)
+            loss = self.forward_loss(target_z, q, tinds.to('cuda'), pinds.to('cuda'))
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -219,10 +220,10 @@ class BYOLTrainer():
 
             batch_time.update(time.time() - end)
             end = time.time()
-             
+            #import ipdb;ipdb.set_trace()
             # Print log info
             if self.gpu == 0 and self.steps % self.log_step == 0:
-                '''
+                
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
                 wandb.log({
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
@@ -233,7 +234,7 @@ class BYOLTrainer():
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
-                '''
+
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'
@@ -245,14 +246,14 @@ class BYOLTrainer():
                         f'Backward Time {backward_time.val:.4f} ({backward_time.avg:.4f})\t'
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
-            images, _ = prefetcher.next()
-        '''    
-        # Log averages at end of Epoch
-        wandb.log({
-            'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
-            'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
-            'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
-            'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
-            'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
-        })
-        '''
+            images, masks = prefetcher.next()
+        if self.gpu == 0: 
+            # Log averages at end of Epoch
+            wandb.log({
+                'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
+                'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
+                'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
+                'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
+                'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
+            })
+
