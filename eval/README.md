@@ -10,7 +10,7 @@ Note: Instructions taken from the MoCo codebase.
 
 1. Install [detectron2](https://github.com/facebookresearch/detectron2/blob/master/INSTALL.md).
 
-2. Convert a pre-trained MoCo model to detectron2's format:
+2. Convert a pre-trained model to detectron2's format:
 ```
 python3 convert-torchvision-to-d2.py [PATH-TO-PYTORCH-RESNET50-PTH-TAR] detcon_r50.pkl
 ```
