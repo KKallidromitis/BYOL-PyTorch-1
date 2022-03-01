@@ -24,12 +24,22 @@ class DetconInfoNCECriterion(nn.Module):
 
     def forward(self, target, pred, tind, pind):        
         #Note: We don't gather from all gpus
-        #import ipdb;ipdb.set_trace()
+        
 
         target1,target2 = target[:self.batch_size],target[self.batch_size:]
         pred1,pred2 = pred[:self.batch_size],pred[self.batch_size:]
         tind1,tind2 = tind[:self.batch_size],tind[self.batch_size:]
         pind1,pind2 = pind[:self.batch_size],pind[self.batch_size:]
+        
+        torch.save(target1,'./rand/target1.pt')
+        torch.save(target2,'./rand/target2.pt')
+        torch.save(pred1,'./rand/pred1.pt')
+        torch.save(pred2,'./rand/pred2.pt')
+        torch.save(tind1,'./rand/tind1.pt')
+        torch.save(tind2,'./rand/tind2.pt')
+        torch.save(pind1,'./rand/pind1.pt')
+        torch.save(pind2,'./rand/pind2.pt')
+        import ipdb;ipdb.set_trace()
         
         same_obj_aa = self.make_same_obj(pind1, tind1)
         same_obj_ab = self.make_same_obj(pind1, tind2)

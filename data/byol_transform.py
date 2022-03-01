@@ -23,7 +23,7 @@ class SSLMaskDataset(VisionDataset):
     def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
         self.root = root
         self.transform = transform
-        self.samples = make_dataset(self.root, extensions = extensions)
+        self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
         self.loader = default_loader
         self.targets = [s[1] for s in self.samples]
         self.img_to_mask = self._get_masks(mask_file)

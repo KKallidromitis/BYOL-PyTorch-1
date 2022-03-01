@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-from utils.mask_utils import convert_binary_mask,sample_masks
+from utils.mask_utils import sample_masks
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -60,9 +60,7 @@ class EncoderwithProjection(nn.Module):
     def forward(self, x, masks, mnet=False):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
-                
-        binary_masks = convert_binary_mask(masks)
-        masks,mask_ids = sample_masks(binary_masks)
+        masks,mask_ids = sample_masks(masks)
         
         #if mnet:
         #    pertubation = torch.reshape(self.masknet(x),(-1, 16, 49))
