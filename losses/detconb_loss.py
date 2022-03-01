@@ -31,11 +31,6 @@ class DetconInfoNCECriterion(nn.Module):
         tind1,tind2 = tind[:self.batch_size],tind[self.batch_size:]
         pind1,pind2 = pind[:self.batch_size],pind[self.batch_size:]
         
-        del target,
-        del pred
-        del tind
-        del pind
-        
         same_obj_aa = self.make_same_obj(pind1, tind1)
         same_obj_ab = self.make_same_obj(pind1, tind2)
         same_obj_ba = self.make_same_obj(pind2, tind1)

@@ -23,7 +23,7 @@ data:
   mask_type: "fh"
   resize_size: 224
   data_workers: 8
-  train_batch_size: 128
+  train_batch_size: 32
   val_batch_size: 64
   dual_views: true
   num_examples: 12000 #1281167
