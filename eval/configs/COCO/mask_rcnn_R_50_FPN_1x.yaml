@@ -39,14 +39,9 @@ SOLVER:
   #Warmup lr lineary for 500 iter
   WARMUP_ITERS: 500
   #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
-  GAMMA : 10
+  GAMMA : 10.0
 
 TEST:
-  AUG:
-      ENABLED: False
-      FLIP: False
-      MAX_SIZE: 1024
-      MIN_SIZES: 1024
   EVAL_PERIOD: 2500
   PRECISE_BN:
     ENABLED: True
