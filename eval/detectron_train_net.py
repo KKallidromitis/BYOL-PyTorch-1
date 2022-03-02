@@ -32,7 +32,7 @@ class Trainer(DefaultTrainer):
                         T.ResizeScale(0.85, 1.25, 1024, 1024), #Approximating longest edge resizing by factor in range [0.85, 1.25]
                         T.FixedSizeCrop((1024, 1024)) #Then cropped or padded to a 1024×1024 image.
                     ]
-        return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, True, augmentations = train_augs))
+        return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, True, augmentations = train_augs, use_instance_mask=True))
        
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
@@ -40,7 +40,7 @@ class Trainer(DefaultTrainer):
         test_augs = [
                         T.FixedSizeCrop((1024, 1024)) #During testing, images are resized to 1024 pixels on the longest side then padded to 1024×1024 pixels.
                     ]
-        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False), augmentations=test_augs)
+        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False, augmentations=test_augs, use_instance_mask=True))
 
 
 def setup(args):
