@@ -13,9 +13,6 @@ MODEL:
   FPN:
     NORM: "SyncBN"
   ROI_BOX_HEAD:
-    NAME: "FastRCNNConvFCHead"
-    NUM_CONV: 0
-    NUM_FC: 2
     NORM: "SyncBN"
   ROI_MASK_HEAD:
     NORM: "SyncBN"
