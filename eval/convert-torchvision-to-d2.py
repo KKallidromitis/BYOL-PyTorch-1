@@ -1,5 +1,6 @@
 """
 File from detectron2. Used to convert ResNet checkpoint -> Detectron2 compatible ResNet checkpoint
+Adapted for the checkpoints from this codebase
 """
 #!/usr/bin/env python
 # Copyright (c) Facebook, Inc. and its affiliates.
@@ -35,15 +36,26 @@ INPUT:
 if __name__ == "__main__":
     input = sys.argv[1]
 
-    obj = torch.load(input, map_location="cpu")
+    obj = torch.load(input, map_location="cpu")["model"]
 
     newmodel = {}
     for k in list(obj.keys()):
-        old_k = k
-        if "layer" not in k:
+        if "module.online_network.encoder." not in k: #Only use online network encoder param
+            obj.pop(k)
+            continue
+        else:
+            old_k = k
+            k = k[len("module.online_network.encoder."):] #Remove byol model prefix
+        
+        if k[0] in ["0", "1"]:
+            if k[0] == "0": #To match typical torchvision convention (our 0 -> conv1)
+                k = "conv1" + k[1:]
+            else: # bn1 param
+                k = "bn1" + k[1:]
             k = "stem." + k
+            
         for t in [1, 2, 3, 4]:
-            k = k.replace("layer{}".format(t), "res{}".format(t + 1))
+            k = k[0].replace("{}".format(t+3), "res{}".format(t + 1)) + k[1:]
         for t in [1, 2, 3]:
             k = k.replace("bn{}".format(t), "conv{}.norm".format(t))
         k = k.replace("downsample.0", "shortcut")
@@ -57,3 +69,5 @@ if __name__ == "__main__":
         pkl.dump(res, f)
     if obj:
         print("Unconverted keys:", obj.keys())
+    else:
+        print("All keys found and converted!")

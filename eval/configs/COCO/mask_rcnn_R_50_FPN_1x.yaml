@@ -2,10 +2,28 @@ _BASE_: "../Base-RCNN-FPN.yaml"
 MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
-  WEIGHTS: "See Instructions (ADD PATH TO PKL WEIGHTS!)"
-  MASK_ON: True
+  WEIGHTS: "/home/akash/detconb/eval/detcon_r50.pkl"
   RESNETS:
+    DEPTH: 50
+    NORM: "SyncBN"
     STRIDE_IN_1X1: False
+  MASK_ON: True
+  BACKBONE: #Finetune entire model
+    FREEZE_AT: 0
+  FPN:
+    NORM: "SyncBN"
+  ROI_BOX_HEAD:
+    NAME: "FastRCNNConvFCHead"
+    NUM_CONV: 4
+    NUM_FC: 1
+    NORM: "SyncBN"
+  ROI_MASK_HEAD:
+    NORM: "SyncBN"
+
+DATASETS:
+  TRAIN: ("coco_2017_train",)
+  TEST: ("coco_2017_val",)
+
 INPUT:
   FORMAT: "RGB"
 
@@ -13,8 +31,8 @@ INPUT:
 SOLVER:
   # Global batch size
   IMS_PER_BATCH: 64
-  # Detcon trained COCO on 16 tpus
-  REFERENCE_WORLD_SIZE: 16
+  # Detcon trained COCO on 16 tpus. Setting = 8 trains the same hp on 8 gpus (can change to 16 to scale hp according to compute)
+  REFERENCE_WORLD_SIZE: 8
   BASE_LR: 0.3
   MOMENTUM: 0.9
   WEIGHT_DECAY: 0.00004
@@ -22,3 +40,13 @@ SOLVER:
   WARMUP_ITERS: 500
   #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
   GAMMA : 10
+
+TEST:
+  AUG:
+      ENABLED: False
+      FLIP: False
+      MAX_SIZE: 1024
+      MIN_SIZES: 1024
+  EVAL_PERIOD: 2500
+  PRECISE_BN:
+    ENABLED: True
