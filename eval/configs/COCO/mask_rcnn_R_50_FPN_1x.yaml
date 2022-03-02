@@ -39,7 +39,7 @@ SOLVER:
   #Warmup lr lineary for 500 iter
   WARMUP_ITERS: 500
   #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
-  GAMMA : 10.0
+  GAMMA : 0.1
 
 TEST:
   EVAL_PERIOD: 2500
