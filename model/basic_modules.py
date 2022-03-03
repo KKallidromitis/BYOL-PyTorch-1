@@ -66,6 +66,7 @@ class EncoderwithProjection(nn.Module):
         #    pertubation = torch.reshape(self.masknet(x),(-1, 16, 49))
         #    masks = pertubation + masks.to('cuda')
         
+        
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
         masks_area = masks.sum(axis=-1, keepdims=True)

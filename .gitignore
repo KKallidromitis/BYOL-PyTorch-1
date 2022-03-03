@@ -1,4 +1,6 @@
 # project related
+eval/output/
+rand/
 .vscode/
 *.DS_Store
 ckpt/

@@ -2,7 +2,7 @@ _BASE_: "../Base-RCNN-FPN.yaml"
 MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
-  WEIGHTS: "/home/akash/detconb/eval/detcon_r50.pkl"
+  WEIGHTS: "/home/kkallidromitis/detconb/ckpt/baseline/r50.pkl"
   RESNETS:
     DEPTH: 50
     NORM: "SyncBN"
