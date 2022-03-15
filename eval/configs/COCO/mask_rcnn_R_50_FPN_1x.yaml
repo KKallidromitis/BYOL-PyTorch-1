@@ -1,8 +1,8 @@
-_BASE_: "../Base-RCNN-FPN.yaml"
+_BASE_: "./base.yaml"
 MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
-  WEIGHTS: "/home/kkallidromitis/detconb/ckpt/baseline/r50.pkl"
+  WEIGHTS: "res50.pkl"
   RESNETS:
     DEPTH: 50
     NORM: "SyncBN"
@@ -28,8 +28,10 @@ INPUT:
 SOLVER:
   # Global batch size
   IMS_PER_BATCH: 64
-  # Detcon trained COCO on 16 tpus. Setting = 8 trains the same hp on 8 gpus (can change to 16 to scale hp according to compute)
-  REFERENCE_WORLD_SIZE: 8
+  
+ # Detcon trained on 16 tpus with a batch size of 64, setting =16 will forece `auto_scale_workers` to retain `IMS_PER_BATCH // REFERENCE_WORLD_SIZE`=4 images per GPU
+  REFERENCE_WORLD_SIZE: 16
+  
   BASE_LR: 0.3
   MOMENTUM: 0.9
   WEIGHT_DECAY: 0.00004
@@ -37,6 +39,10 @@ SOLVER:
   WARMUP_ITERS: 500
   #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
   GAMMA : 0.1
+  # 118K * 12 epochs / 64 img per batch = 22125 => approx to 24000
+  MAX_ITER: 24000
+  STEPS: (16000, 21333)
+  # 6/9 and 8/9 of training time
 
 TEST:
   EVAL_PERIOD: 2500
