@@ -8,6 +8,7 @@ The `detectron_train_net.py` script trains MaskRCNN (ResNet50-FPN) for 12 epochs
 
 ### ImageNet Instructions
 Run the following. Note, BYOL used the best result following a sweep over lr in [0.4, 0.3, 0.2, 0.1, 0.05]
+```
 python main_lincls.py \
   -a resnet50 \
   --lr [LR] \
@@ -15,6 +16,7 @@ python main_lincls.py \
   --pretrained [your checkpoint path]/checkpoint_0199.pth.tar \
   --dist-url 'tcp://localhost:10001' --multiprocessing-distributed --world-size 1 --rank 0 \
   [your imagenet-folder with train and val folders]
+```
 
 
 ### Detectron2 Instructions
