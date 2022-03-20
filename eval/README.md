@@ -1,6 +1,6 @@
 
 ## Evaluation
-Note: Instructions taken from the MoCo codebase. 
+Note: Instructions and code taken from the MoCo codebase. 
 
 The `main_lincls.py` run linear evaluation on ImageNet following optmimzer in BYOL (Section C.1). 
 
