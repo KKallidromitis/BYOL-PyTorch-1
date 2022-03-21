@@ -98,9 +98,6 @@ def main():
                       'You may see unexpected behavior when restarting '
                       'from checkpoints.')
 
-    # Log to wandb
-    wandb.init()
-
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
@@ -145,6 +142,11 @@ def main_worker(gpu, ngpus_per_node, args):
             args.rank = args.rank * ngpus_per_node + gpu
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
+    
+    # init wandb
+    if not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0):
+        wandb.init()
+
     # create model
     print("=> creating model '{}'".format(args.arch))
     model = models.__dict__[args.arch]()
@@ -268,6 +270,9 @@ def main_worker(gpu, ngpus_per_node, args):
             transforms.ToTensor(),
             normalize,
         ]))
+
+    #TODO: UNCOMMENT
+    train_dataset, _ = torch.utils.data.random_split(train_dataset, (10, len(train_dataset)-10))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -430,21 +435,24 @@ def sanity_check(state_dict, pretrained_weights):
     """
     print("=> loading '{}' for sanity check".format(pretrained_weights))
     checkpoint = torch.load(pretrained_weights, map_location="cpu")
-    state_dict_pre = checkpoint['state_dict']
+    state_dict_pre = checkpoint['model']
+ 
+    # Modified (since we can reuse pretrain loading code)
+    for k in list(state_dict_pre.keys()):
+        if k.startswith('module.online_network.encoder.'):
+            # remove prefix
+            new_k = k[len("module.online_network.encoder."):]
+            if new_k[0] in ["0", "1"]:
+                if new_k[0] == "0":
+                    new_k = "conv1" + new_k[1:]
+                else:
+                    new_k = "bn1" + new_k[1:]
+            for t in [1, 2, 3, 4]:
+                new_k = new_k[0].replace("{}".format(t+3), "layer{}".format(t)) + new_k[1:]
 
-    for k in list(state_dict.keys()):
-        # only ignore fc layer
-        if 'fc.weight' in k or 'fc.bias' in k:
-            continue
-
-        # name in pretrained model
-        k_pre = 'module.encoder_q.' + k[len('module.'):] \
-            if k.startswith('module.') else 'module.encoder_q.' + k
-
-        assert ((state_dict[k].cpu() == state_dict_pre[k_pre]).all()), \
-            '{} is changed in linear classifier training.'.format(k)
-
-    print("=> sanity check passed.")
+            new_k = "module." + new_k
+            assert ((state_dict[new_k].cpu() == state_dict_pre[k]).all()), f'{new_k} is changed in training'
+    print("=> Sanity check passed!")
 
 
 class AverageMeter(object):
