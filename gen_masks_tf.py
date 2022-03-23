@@ -120,7 +120,7 @@ class SSLTFDataset(VisionDataset):
         if self._is_png(filename):
             # 1 image is a PNG.
             print('Converting PNG to JPEG for %s' % filename)
-            image_data = coder.png_to_jpeg(image_data)
+            image_data = self.coder.png_to_jpeg(image_data)
         elif self._is_cmyk(filename):
             # 22 JPEG images are in CMYK colorspace.
             print('Converting CMYK to RGB for %s' % filename)
