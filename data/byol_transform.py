@@ -20,12 +20,12 @@ class MultiViewDataInjector():
         return output_cat,mask_cat
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
+    def __init__(self, root: str, mask_file: str, extensions = ".pkl", transform = None):
+        # Changed extension to load pkl!
         self.root = root
         self.transform = transform
         self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
-        self.loader = default_loader
-        self.targets = [s[1] for s in self.samples]
+        # self.loader = default_loader #Don't need for pkl
         self.img_to_mask = self._get_masks(mask_file)
 
     def _get_masks(self, mask_file):
@@ -33,12 +33,20 @@ class SSLMaskDataset(VisionDataset):
             return pickle.load(file)
         
     def __getitem__(self, index: int):
-        path, target = self.samples[index]
+        path, _ = self.samples[index]
+        
+        # Load Image
+        # sample = self.loader(path)
+        with open(path, 'rb') as file:
+            sample = pickle.load(file)
+        
+        # Load Mask
         with open(self.img_to_mask[index], "rb") as file:
             mask = pickle.load(file)
-            
-        sample = self.loader(path)
+
+        # Apply transforms
         if self.transform is not None:
+            #TODO: Check sample.unsqueeze (?)
             sample,mask = self.transform(sample,mask.unsqueeze(0))
         return sample,mask
 

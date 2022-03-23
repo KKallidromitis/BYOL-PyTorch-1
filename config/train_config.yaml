@@ -22,9 +22,9 @@ data:
   image_dir: "/home/kkallidromitis/data/sample/"
   mask_type: "fh"
   resize_size: 224
-  data_workers: 8
-  train_batch_size: 128
-  val_batch_size: 64
+  data_workers: 16
+  train_batch_size: 64
+  val_batch_size: 32
   dual_views: true
   num_examples: 12000 #1281167
 
@@ -33,7 +33,7 @@ optimizer:
   base_lr: 0.3
   momentum: 0.9
   weight_decay: 1.0e-6
-  total_epochs: 70
+  total_epochs: 20
   warmup_epochs: 10
   exclude_bias_and_bn: true
 
