@@ -53,3 +53,4 @@ log:
 
 stage: "train"
 distributed: true
+seed: 0

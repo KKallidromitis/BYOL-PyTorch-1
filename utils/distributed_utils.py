@@ -12,7 +12,19 @@ from classy_vision.generic.distributed_util import (
     convert_to_normal_tensor,
     is_distributed_training_run,
 )
+import numpy as np
+import random
 
+def set_seed(seed: int = 0) -> None:
+    """
+    Set random seed for PyTorch, Python random, NumPy
+    Sets CUDA convolution algorithm to be deterministic (see https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms) 
+    """
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+
+    torch.backends.cudnn.deterministic = True
 
 class GatherLayer(torch.autograd.Function):
     """
