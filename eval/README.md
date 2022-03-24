@@ -2,16 +2,15 @@
 ## Evaluation
 Note: Instructions and code taken from the MoCo codebase. 
 
-The `main_lincls.py` run linear evaluation on ImageNet following optmimzer in BYOL (Section C.1). 
+The `main_lincls.py` run linear evaluation on ImageNet1K following optmimzer in BYOL (Section C.1). 
 
 The `detectron_train_net.py` script trains MaskRCNN (ResNet50-FPN) for 12 epochs on COCO 2017 for instance segmentation and object detection.
 
 ### ImageNet Instructions
-Run the following. Note, BYOL used the best result following a sweep over lr in [0.4, 0.3, 0.2, 0.1, 0.05]
+Run the following. We use the BYOL linear evaluation learning rate of 0.2 seen in [their code](https://github.com/deepmind/deepmind-research/blob/master/byol/configs/eval.py). Note, BYOL used the best result following a sweep over lr in [0.4, 0.3, 0.2, 0.1, 0.05]
 ```
 python main_lincls.py \
   -a resnet50 \
-  --lr [LR] \
   --batch-size 256 \
   --pretrained [your checkpoint path]/checkpoint_0199.pth.tar \
   --dist-url 'tcp://localhost:10001' --multiprocessing-distributed --world-size 1 --rank 0 \
