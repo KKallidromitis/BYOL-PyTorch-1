@@ -90,9 +90,17 @@ class LARS(Optimizer):
                 else:
                     weight_norm = torch.norm(p).item()
                     grad_norm = torch.norm(d_p).item()
+                    update_norm = grad_norm + weight_decay * weight_norm
                     # Compute local learning rate for this layer
-                    local_lr = eta * weight_norm / \
-                        (grad_norm + weight_decay * weight_norm)
+                    local_lr = torch.where(
+                        weight_norm >0,
+                        torch.where(
+                            update_norm >0, (eta * weight_norm /update_norm ), 1.0
+                        ), 1.0
+                    )
+                    # Legacy version: NO check for denom==0
+                    # local_lr = eta * weight_norm / \
+                    #     (grad_norm + weight_decay * weight_norm)
 
                 actual_lr = local_lr * lr
                 d_p = d_p.add(p, alpha=weight_decay).mul(actual_lr)
