@@ -34,7 +34,7 @@ optimizer:
   momentum:  0.99 # src: A.2
   weight_decay: 1.0e-6
   total_epochs: 300
-  warmup_epochs: 30 # src: Deepmind code; should be 1/10 of total epoches
+  warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
 loss: #src: 3.1
