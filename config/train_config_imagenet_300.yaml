@@ -19,19 +19,19 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/kkallidromitis/data/coco/" #TODO: Change to match Japan Cluster
+  image_dir: TODO #TODO: Change to match Japan Cluster
   mask_type: "fh"
   resize_size: 224 # src: 3.1
   data_workers: 16
   train_batch_size: 4096 # src: A.3
   val_batch_size: 2048 #  Should not matter
   dual_views: true
-  num_examples: 118287 # TODO: Change according to ImageNet 
+  num_examples: 1281167
 
 optimizer:
   type: lars
   base_lr: 0.3
-  momentum:  0.99 # src: A.2
+  momentum:  0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
   total_epochs: 300
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
