@@ -34,7 +34,7 @@ optimizer:
   momentum: 0.996
   weight_decay: 1.0e-6
   total_epochs: 50
-  warmup_epochs: 10
+  warmup_epochs: 5 # should be 1/10 of total epoches
   exclude_bias_and_bn: true
 
 loss:
