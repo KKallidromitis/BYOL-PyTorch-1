@@ -31,7 +31,7 @@ data:
 optimizer:
   type: lars
   base_lr: 0.3
-  momentum:  0.9 # src: Deepmind code config
+  momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
   total_epochs: 300
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
