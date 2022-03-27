@@ -48,6 +48,7 @@ class BYOLTrainer():
 
         base_lr = self.config['optimizer']['base_lr'] / 256
         self.max_lr = base_lr * self.global_batch_size
+        self.lr_type = self.config['optimizer']['lr_type']
 
         self.base_mm = self.config['model']['base_momentum']
         self.forward_loss = DetconInfoNCECriterion(config)
@@ -157,15 +158,22 @@ class BYOLTrainer():
         """learning rate warm up and decay"""
         max_lr = self.max_lr
         min_lr = 1e-3 * self.max_lr
+        
         if step < self.warmup_steps:
             lr = (max_lr - min_lr) * step / self.warmup_steps + min_lr
-        else:
+        
+        elif self.lr_type=='piecewise':
+            if step >= (0.98*self.total_steps):
+                lr = self.max_lr/100    
+            if step >= (0.96*self.total_steps):
+                lr = self.max_lr/10  
+            else:
+                lr = self.max_lr
+        elif self.lr_type=='cosine':
             lr = min_lr + 0.5 * (max_lr - min_lr) * (1 + np.cos((step - self.warmup_steps) * np.pi / self.total_steps))
+            
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
-
-    def adjust_mm(self, step):
-        self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()

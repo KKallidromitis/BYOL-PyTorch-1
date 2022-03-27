@@ -38,7 +38,7 @@ class ImageLoader():
     def get_dataset(self, stage):
         #import ipdb;ipdb.set_trace()
         image_dir = os.path.join(self.image_dir,'images', f"{'train' if stage in ('train', 'ft') else 'val'}")
-        mask_file = os.path.join(self.image_dir,'masks',stage+'_img_to_'+self.mask_type+'.pkl')
+        mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
         
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)

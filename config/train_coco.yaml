@@ -31,6 +31,7 @@ data:
 optimizer:
   type: lars
   base_lr: 0.3
+  lr_type: "piecewise"
   momentum: 0.996
   weight_decay: 1.0e-6
   total_epochs: 50
