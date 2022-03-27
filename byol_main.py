@@ -1,13 +1,17 @@
 #-*- coding:utf-8 -*-
 import os
-from pathlib import Path
 import yaml
 import torch
 import torch.distributed as dist
 
 from trainer.byol_trainer import BYOLTrainer
-from utils import logging_util
+from utils import logging_util, distributed_utils
+import argparse
 
+parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
+parser.add_argument("experiment", metavar="Config Filename", default="train_imagenet_300", 
+                    help="Experiment to run. Default is Imagenet 300 epochs")
+                    
 def run_task(config):
     logging = logging_util.get_std_logging()
     if config['distributed']:
@@ -30,11 +34,18 @@ def run_task(config):
         trainer.save_checkpoint(epoch)
 
 def main():
-    with open(Path(Path(__file__).parent, 'config/train_config.yaml'), 'r') as f:
+    args = parser.parse_args()
+    
+    experiment = args.experiment if args.experiment[-5:] == '.yaml' else args.experiment + '.yaml'
+    config_path = os.path.join(os.getcwd(), 'config', experiment)
+    assert os.path.exists(config_path), f"Could not find {experiment} in configs directory!"
+    with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+
+    print("=> Config Details")
+    print(config) #For reference in logs
+    
     run_task(config)
 
 if __name__ == "__main__":
-    #print(f'Pytorch version: {torch.__version__}')
-    #print(f'os environ: {os.environ}')
     main()
