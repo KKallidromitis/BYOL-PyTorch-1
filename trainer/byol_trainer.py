@@ -175,6 +175,9 @@ class BYOLTrainer():
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
 
+    def adjust_mm(self, step):
+        self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
+        
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()

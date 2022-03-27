@@ -88,10 +88,11 @@ class LARS(Optimizer):
                 if lars_exclude:
                     local_lr = 1.
                 else:
-                    weight_norm = torch.norm(p).item()
-                    grad_norm = torch.norm(d_p).item()
-                    update_norm = grad_norm + weight_decay * weight_norm
+                    weight_norm = torch.norm(p)
+                    grad_norm = torch.norm(d_p)
+                    update_norm = (grad_norm + weight_decay * weight_norm).double()
                     # Compute local learning rate for this layer
+                    #import ipdb;ipdb.set_trace()
                     local_lr = torch.where(
                         weight_norm >0,
                         torch.where(
