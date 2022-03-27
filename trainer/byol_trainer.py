@@ -17,14 +17,17 @@ from apex import amp
 from model import BYOLModel
 from optimizer import LARS
 from data import ImageLoader
-from utils import params_util, logging_util, eval_util
+from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from losses import DetconInfoNCECriterion
 
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
-           
+        
+        """set seed"""
+        distributed_utils.set_seed(self.config['seed'])
+        
         """device parameters"""
         self.world_size = self.config['world_size']
         self.rank = self.config['rank']
