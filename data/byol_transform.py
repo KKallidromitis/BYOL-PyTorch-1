@@ -4,6 +4,7 @@ from torchvision import transforms
 import cv2
 from PIL import Image, ImageOps
 import numpy as np
+import random
 import pickle
 from torchvision.datasets import VisionDataset
 from torchvision.datasets.folder import default_loader,make_dataset,IMG_EXTENSIONS
@@ -12,10 +13,18 @@ class MultiViewDataInjector():
     def __init__(self, transform_list):
         self.transform_list = transform_list
 
-    def __call__(self,sample,mask):
-        output,mask = zip(*[transform(sample,mask) for transform in self.transform_list])
-        output_cat = torch.stack(output, dim=0)
-        mask_cat = torch.stack(mask)
+    # EDITED FOR COCO GT SECOND IMG Experiment
+    def __call__(self,sample1,mask1, sample2, mask2):
+        output1, mask1 = self.transform_list[0](sample1, mask1)
+        output2, mask2 = self.transform_list[1](sample2, mask2)
+        
+        print(output1.shape, mask1. shape, output2.shape, mask2.shape)
+        output_cat = torch.stack([output1, output2], dim=0)
+        mask_cat = torch.stack([mask1, mask2], dim=0)
+        print(output_cat.shape, mask_cat.shape)
+        # output,mask = zip(*[transform(sample,mask) for transform in self.transform_list])
+        # output_cat = torch.stack(output, dim=0)
+        # mask_cat = torch.stack(mask)
         
         return output_cat,mask_cat
 
@@ -23,28 +32,68 @@ class SSLMaskDataset(VisionDataset):
     def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
         self.root = root
         self.transform = transform
-        self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
-        self.loader = default_loader
-        self.img_to_mask = self._get_masks(mask_file)
-
-    def _get_masks(self, mask_file):
-        with open(mask_file, "rb") as file:
-            return pickle.load(file)
         
+        #EDITED FOR COCO GT
+        from pycocotools.coco import COCO
+        self.coco = COCO(mask_file)
+        self.imageFName2ID = {}
+        import json
+        import os
+        with open(mask_file, 'r') as f:
+            data = json.load(f)
+        for img_data in data['images']:
+            self.imageFName2ID[img_data['file_name']] = img_data['id']
+        
+        del data # save space
+        
+        #self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
+        #self.loader = default_loader
+        #self.img_to_mask = self._get_masks(mask_file)
+
+    # EDITED FOR COCO GT SECOND IMG Experiment
+    # def _get_masks(self, mask_file):
+    #     with open(mask_file, "rb") as file:
+    #         return pickle.load(file)
+    
+    # EDITED FOR COCO GT SECOND IMG Experiment
+    def load_masks(self, image_path):
+        fname = os.path.split(image_path)[1]
+        anns = self.coco.loadAnns(self.imageFName2ID[fname])
+        
+        # From https://stackoverflow.com/questions/50805634/how-to-create-mask-images-from-coco-dataset
+        mask = self.coco.annToMask(anns[0])
+        for i in range(len(anns)):
+            mask += self.coco.annToMask(anns[i])
+        import ipdb
+        ipdb.set_trace()
+        return mask
+    
+    # EDITED FOR COCO GT SECOND IMG Experiment
     def __getitem__(self, index: int):
-        path, _ = self.samples[index]
+        path1, _ = self.samples[index]
+        path2, _ = self.samples[random.randrange(0, len(self))] #Randomly sample positive
         
-        # Load Image
-        sample = self.loader(path)
-        
-        # Load Mask
-        with open(self.img_to_mask[index], "rb") as file:
-            mask = pickle.load(file)
+        sample1, mask1 = self.loader(path1), self.load_masks(path1)
+        sample2, mask2 = self.loader(path2, self.load_masks(path2))
 
-        # Apply transforms
         if self.transform is not None:
-            sample,mask = self.transform(sample,mask.unsqueeze(0))
-        return sample,mask
+            samples, mask = self.transform(sample1, mask1, sample2, mask2) #Concats Anchor and Positive together
+                   
+        return samples, mask             
+                                   
+        # path, _ = self.samples[index]
+        
+        # # Load Image
+        # sample = self.loader(path)
+        
+        # # Load Mask
+        # with open(self.img_to_mask[index], "rb") as file:
+        #     mask = pickle.load(file)
+
+        # # Apply transforms
+        # if self.transform is not None:
+        #     sample,mask = self.transform(sample,mask.unsqueeze(0))
+        # return sample,mask
 
     def __len__(self) -> int:
         return len(self.samples)
