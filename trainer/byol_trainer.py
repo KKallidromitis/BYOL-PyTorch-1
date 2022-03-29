@@ -160,7 +160,7 @@ class BYOLTrainer():
         min_lr = 1e-3 * self.max_lr
         
         if step < self.warmup_steps:
-            lr =  step / int(self.warmup_steps) * max_lr
+            lr =  step / int(self.warmup_steps) * max_lr #Following deepmind implementation, returns lr = 0. during first step!
                     
         elif self.lr_type=='piecewise':
             if step >= (0.98*self.total_steps):
@@ -170,13 +170,11 @@ class BYOLTrainer():
             else:
                 lr = self.max_lr
                 
-        elif self.lr_type=='cosine':
+        elif self.lr_type=='cosine': # For lr from detcon paper, returns lr as smalls ~1e-8
             max_steps = self.total_steps - self.warmup_steps
             global_step = np.minimum((step - self.warmup_steps), max_steps)
             cosine_decay_value = 0.5 * (1 + np.cos(np.pi * global_step / max_steps))
             lr = max_lr * cosine_decay_value
-        
-        lr = np.maximum(min_lr, lr) # Deepmind schedule code returns very small lr (down to 1e-13 for cosine schedule)
                  
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
