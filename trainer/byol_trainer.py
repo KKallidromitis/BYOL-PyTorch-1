@@ -160,18 +160,24 @@ class BYOLTrainer():
         min_lr = 1e-3 * self.max_lr
         
         if step < self.warmup_steps:
-            lr = (max_lr - min_lr) * step / self.warmup_steps + min_lr
-        
+            lr =  step / int(self.warmup_steps) * max_lr
+                    
         elif self.lr_type=='piecewise':
             if step >= (0.98*self.total_steps):
                 lr = self.max_lr/100    
             if step >= (0.96*self.total_steps):
-                lr = self.max_lr/10  
+                lr = self.max_lr/10
             else:
                 lr = self.max_lr
+                
         elif self.lr_type=='cosine':
-            lr = min_lr + 0.5 * (max_lr - min_lr) * (1 + np.cos((step - self.warmup_steps) * np.pi / self.total_steps))
-            
+            max_steps = self.total_steps - self.warmup_steps
+            global_step = np.minimum((step - self.warmup_steps), max_steps)
+            cosine_decay_value = 0.5 * (1 + np.cos(np.pi * global_step / max_steps))
+            lr = max_lr * cosine_decay_value
+        
+        lr = np.maximum(min_lr, lr) # Deepmind schedule code returns very small lr (down to 1e-13 for cosine schedule)
+                 
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
 
