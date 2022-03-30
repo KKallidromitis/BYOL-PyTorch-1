@@ -165,7 +165,7 @@ class BYOLTrainer():
         elif self.lr_type=='piecewise':
             if step >= (0.96*self.total_steps):
                 lr = self.max_lr/10 
-            if step >= (0.98*self.total_steps):
+            elif step >= (0.98*self.total_steps):
                 lr = self.max_lr/100
             else:
                 lr = self.max_lr
