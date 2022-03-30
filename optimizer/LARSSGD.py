@@ -96,8 +96,8 @@ class LARS(Optimizer):
                     local_lr = torch.where(
                         weight_norm >0,
                         torch.where(
-                            update_norm >0, (eta * weight_norm /update_norm ), torch.tensor(1.0,dtype=torch.float32)
-                        ), torch.tensor(1.0,dtype=torch.float32)
+                            update_norm >0, (eta * weight_norm /update_norm ), torch.tensor(1.0,dtype=torch.float32).to('cuda')
+                        ), torch.tensor(1.0,dtype=torch.float32).to('cuda')
                     )
                     # Legacy version: NO check for denom==0
                     # local_lr = eta * weight_norm / \
