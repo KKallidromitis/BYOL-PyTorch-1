@@ -1,5 +1,6 @@
 # project related
 eval/output/
+config/train_sample_300.yaml
 rand/
 .vscode/
 *.DS_Store
