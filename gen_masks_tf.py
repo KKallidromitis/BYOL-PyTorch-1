@@ -235,7 +235,7 @@ class Preload_Masks():
     
 if __name__=="__main__":
     
-    mask_loader = Preload_Masks(dataset_dir = '/home/kkallidromitis/data/imagenet/train',
+    mask_loader = Preload_Masks(dataset_dir = '/home/kkallidromitis/data/imagenet/images/train',
                             output_dir = '/home/kkallidromitis/data/imagenet/masks/',
                             mask_type = 'fh',
                             experiment_name = 'train_tf',

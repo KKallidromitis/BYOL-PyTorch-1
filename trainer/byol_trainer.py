@@ -70,7 +70,7 @@ class BYOLTrainer():
             
         self.save_epoch = self.config['checkpoint']['save_epoch']
         self.ckpt_path = self.config['checkpoint']['ckpt_path'].format(
-            self.time_stamp, self.config['model']['backbone']['type'], {})
+            self.time_stamp,self.time_stamp, self.config['model']['backbone']['type'], {})
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         
@@ -165,7 +165,7 @@ class BYOLTrainer():
         elif self.lr_type=='piecewise':
             if step >= (0.96*self.total_steps):
                 lr = self.max_lr/10 
-            if step >= (0.98*self.total_steps):
+            elif step >= (0.98*self.total_steps):
                 lr = self.max_lr/100
             else:
                 lr = self.max_lr
