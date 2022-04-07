@@ -34,7 +34,7 @@ class ImageNetLoader():
         return data_loader
 
     def get_dataset(self, stage):
-        image_dir = self.image_dir + f"imagenet_{'train' if stage in ('train', 'ft') else 'val'}"
+        image_dir = self.image_dir + f"images/{'train' if stage in ('train', 'ft') else 'val'}"
         transform1 = get_transform(stage)
         if self.dual_views:
             transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
