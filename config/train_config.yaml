@@ -40,7 +40,7 @@ checkpoint:
   time_stamp:
   resume_path:
   save_epoch: 10
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
+  ckpt_path: "ckpt/byol/{}/{}_{}_{}.pth.tar"
 
 log:
   log_step: 10
