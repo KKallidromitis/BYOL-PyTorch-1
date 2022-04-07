@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 from torch import nn
-#from utils.distributed_utils import gather_from_all
-from classy_vision.generic.distributed_util import gather_from_all
+from utils.distributed_utils import gather_from_all
+#from classy_vision.generic.distributed_util import gather_from_all
 
 class DetconInfoNCECriterion(nn.Module):
 
@@ -13,7 +13,7 @@ class DetconInfoNCECriterion(nn.Module):
         self.num_rois = config['loss']['mask_rois']
         self.max_val = 1e9
         self.config = config
-
+        self.rank = config['rank']
     def make_same_obj(self,ind_0, ind_1):
         b = ind_0.shape[0]
         same_obj = torch.eq(ind_0.reshape([b, self.num_rois, 1]),
@@ -25,7 +25,6 @@ class DetconInfoNCECriterion(nn.Module):
         return torch.mean(ce)
 
     def forward(self, target, pred, tind, pind):        
-        #Note: We don't gather from all gpus
         #import ipdb;ipdb.set_trace()
         target1,target2 = target[:self.batch_size],target[self.batch_size:]
         pred1,pred2 = pred[:self.batch_size],pred[self.batch_size:]
@@ -43,12 +42,14 @@ class DetconInfoNCECriterion(nn.Module):
         target2 = torch.nn.functional.normalize(target2,dim=-1)
         
         if torch.distributed.is_available() and torch.distributed.is_initialized():
+            labels_idx = np.arange(self.batch_size) + self.rank * self.batch_size
+            
             target1_large = gather_from_all(target1)
             target2_large = gather_from_all(target2)
             enlarged_batch_size = target1_large.shape[0]
 
-            labels_local = torch.nn.functional.one_hot(torch.tensor(np.arange(self.batch_size))
-                                                   ,enlarged_batch_size).unsqueeze(1).unsqueeze(3).to('cuda')
+            labels_local = torch.nn.functional.one_hot(torch.tensor(labels_idx),
+                                                       enlarged_batch_size).unsqueeze(1).unsqueeze(3).to('cuda')
 
         logits_aa = torch.einsum("abk,uvk->abuv", pred1, target1_large) / self.temperature
         logits_bb = torch.einsum("abk,uvk->abuv", pred2, target2_large) / self.temperature

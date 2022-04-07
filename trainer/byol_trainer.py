@@ -73,9 +73,10 @@ class BYOLTrainer():
             self.time_stamp,self.time_stamp, self.config['model']['backbone']['type'], {})
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
+        self.log_all = self.config['log']['log_all']
         
-        if self.gpu==0:
-            wandb.init(project="detcon_byol",name = save_dir)
+        if self.gpu==0 or self.log_all:
+            wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
         
         try:
             os.makedirs(save_dir)
@@ -240,7 +241,7 @@ class BYOLTrainer():
             end = time.time()
             #import ipdb;ipdb.set_trace()
             # Print log info
-            if self.gpu == 0 and self.steps % self.log_step == 0:
+            if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
                 
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
                 wandb.log({
@@ -265,7 +266,7 @@ class BYOLTrainer():
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
             images, masks = prefetcher.next()
-        if self.gpu == 0: 
+        if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
             wandb.log({
                 'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),

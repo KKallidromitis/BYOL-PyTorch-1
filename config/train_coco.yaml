@@ -51,6 +51,7 @@ checkpoint:
 log:
   log_step: 10
   log_dir:
+  log_all: False
 
 stage: "train"
 distributed: true
