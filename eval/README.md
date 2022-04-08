@@ -11,7 +11,7 @@ Run the following. We use the BYOL linear evaluation learning rate of 0.2 seen i
 ```
 python main_lincls.py \
   -a resnet50 \
-  --batch-size 256 \
+  --batch-size 1024 \
   --pretrained [your checkpoint path]/checkpoint_0199.pth.tar \
   --dist-url 'tcp://localhost:10001' --multiprocessing-distributed --world-size 1 --rank 0 \
   [your imagenet-folder with train and val folders]
