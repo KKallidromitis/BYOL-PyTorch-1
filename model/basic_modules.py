@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
+import torch.nn.functional as F
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -19,6 +20,18 @@ class MLP(nn.Module):
         x = self.relu1(x)
         x = self.l2(x)
         return x
+    
+class Masknet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(2048, 2048, 1)
+        self.conv2 = nn.Conv2d(2048, 2048, 1)
+        self.conv3 = nn.Conv2d(2048, 16, 1)
+        self.norm = nn.BatchNorm2d(16, 16)
+
+    def forward(self, x):
+        y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
+        return y
 
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
@@ -33,36 +46,15 @@ class EncoderwithProjection(nn.Module):
         input_dim = config['model']['projection']['input_dim']
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
-        self._get_masknet()
+        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
         
-    def _get_masknet(self):
-        #import ipdb;ipdb.set_trace()
-        
-        import torch.nn as nn
-        import torch.nn.functional as F
-
-        class Net(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.conv1 = nn.Conv2d(2048, 2048, 1)
-                self.conv2 = nn.Conv2d(2048, 2048, 1)
-                self.conv3 = nn.Conv2d(2048, 16, 1)
-                self.norm = nn.BatchNorm2d(16, 16)
-
-            def forward(self, x):
-                y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
-                return y
-            
-        self.masknet = Net()
-        
-    def forward(self, x, masks, mnet=False):
+    def forward(self, x, masks, mnet=None):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
         masks,mask_ids = sample_masks(masks)
         
-        if mnet:
-            pertubation = torch.reshape(self.masknet(x.detach()),(-1, 16, 49))
+        if mnet!=None:
+            pertubation = torch.reshape(mnet(x.detach()),(-1, 16, 49))
             masks = pertubation + masks.to('cuda')
         
         
