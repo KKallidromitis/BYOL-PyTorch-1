@@ -204,6 +204,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
+            print(f"GPU 0 is using batch-size {args.batch_size}")
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         else:
@@ -325,6 +326,9 @@ def main_worker(gpu, ngpus_per_node, args):
             wandb.log({"Test Accuracy": acc1})
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
+    if not args.multiprocessing_distributed or (args.multiprocessing_distributed
+        and args.rank % ngpus_per_node == 0):
+        wandb.finish()
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
