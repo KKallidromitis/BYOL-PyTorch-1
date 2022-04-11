@@ -34,7 +34,7 @@ class EncoderwithProjection(nn.Module):
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
-        #self._get_masknet()
+        self._get_masknet()
         
     def _get_masknet(self):
         #import ipdb;ipdb.set_trace()
@@ -48,11 +48,10 @@ class EncoderwithProjection(nn.Module):
                 self.conv1 = nn.Conv2d(2048, 2048, 1)
                 self.conv2 = nn.Conv2d(2048, 2048, 1)
                 self.conv3 = nn.Conv2d(2048, 16, 1)
-                #self.norm = nn.BatchNorm2d(16, 16)
+                self.norm = nn.BatchNorm2d(16, 16)
 
             def forward(self, x):
-                #y = F.relu(selfs.norm(F.relu(self.conv1(x))))
-                y = self.conv3(F.relu(self.conv2(F.relu(self.conv1(x)))))
+                y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
                 return y
             
         self.masknet = Net()
@@ -62,9 +61,9 @@ class EncoderwithProjection(nn.Module):
         x = self.encoder(x) #(B, 2048, 7, 7)
         masks,mask_ids = sample_masks(masks)
         
-        #if mnet:
-        #    pertubation = torch.reshape(self.masknet(x),(-1, 16, 49))
-        #    masks = pertubation + masks.to('cuda')
+        if mnet:
+            pertubation = torch.reshape(self.masknet(x.detach()),(-1, 16, 49))
+            masks = pertubation + masks.to('cuda')
         
         
         # Detcon mask multiply
