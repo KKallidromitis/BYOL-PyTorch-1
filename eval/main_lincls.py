@@ -73,6 +73,8 @@ parser.add_argument('--seed', default=0, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
+parser.add_argument('--mini-test', action='store_true',
+                    help='Mini test on a very tiny subsample to test the code')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -86,7 +88,7 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
-
+    print(args)
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -143,8 +145,10 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     
     # init wandb
+    print(args.mini_test)
     if not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0):
-        wandb.init()
+        if not args.mini_test:
+            wandb.init()
 
     # create model
     print("=> creating model '{}'".format(args.arch))
@@ -275,6 +279,9 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize,
         ]))
 
+    if args.mini_test:
+        train_dataset = torch.utils.data.Subset(train_dataset,range(100))
+
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -285,13 +292,16 @@ def main_worker(gpu, ngpus_per_node, args):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
     
-    val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
+    val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             normalize,
-        ])),
+        ]))
+    if args.mini_test:
+        val_dataset = torch.utils.data.Subset(val_dataset,range(100))
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
@@ -323,7 +333,10 @@ def main_worker(gpu, ngpus_per_node, args):
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
             }, is_best)
-            wandb.log({"Test Accuracy": acc1})
+            if  args.mini_test:
+                print("Test Accuracy",acc1)
+            else:
+                wandb.log({"Test Accuracy": acc1})
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
     if not args.multiprocessing_distributed or (args.multiprocessing_distributed
