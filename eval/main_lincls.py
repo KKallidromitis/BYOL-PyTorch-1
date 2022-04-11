@@ -42,9 +42,8 @@ parser.add_argument('--epochs', default=80, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=1024, type=int,
-                    metavar='N',
-                    help='mini-batch size (default: 256), this is the total '
+parser.add_argument('-b', '--batch-size', default=128, type=int,
+                    metavar='N', help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.2, type=float,
@@ -160,6 +159,7 @@ def main_worker(gpu, ngpus_per_node, args):
     model.fc.bias.data.zero_()
 
     # load from pre-trained, before DistributedDataParallel constructor
+    # load from pre-trained, before DistributedDataParallel constructor
     if args.pretrained:
         if os.path.isfile(args.pretrained):
             print("=> loading checkpoint '{}'".format(args.pretrained))
@@ -191,6 +191,7 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             print("=> no checkpoint found at '{}'".format(args.pretrained))
 
+
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
@@ -209,6 +210,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
+
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
@@ -271,8 +273,6 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize,
         ]))
 
-    #TODO: UNCOMMENT
-    train_dataset, _ = torch.utils.data.random_split(train_dataset, (10, len(train_dataset)-10))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -282,7 +282,7 @@ def main_worker(gpu, ngpus_per_node, args):
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-
+    
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
             transforms.Resize(256),
@@ -418,7 +418,6 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
-
     return top1.avg
 
 
@@ -453,7 +452,6 @@ def sanity_check(state_dict, pretrained_weights):
             new_k = "module." + new_k
             assert ((state_dict[new_k].cpu() == state_dict_pre[k]).all()), f'{new_k} is changed in training'
     print("=> Sanity check passed!")
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
