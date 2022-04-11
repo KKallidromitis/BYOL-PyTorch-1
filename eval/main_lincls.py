@@ -339,8 +339,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 wandb.log({"Test Accuracy": acc1})
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
-    if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-        and args.rank % ngpus_per_node == 0):
+    if args.multiprocessing_distributed and args.rank % ngpus_per_node == 0:
         wandb.finish()
 
 
