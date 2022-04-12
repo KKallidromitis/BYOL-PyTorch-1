@@ -16,7 +16,7 @@ from apex import amp
 
 from model import BYOLModel
 from optimizer import LARS
-from data import ImageLoader
+from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from losses import DetconInfoNCECriterion
@@ -94,7 +94,11 @@ class BYOLTrainer():
         """get data loader"""
         self.stage = self.config['stage']
         assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for BYOL training')
-        self.data_ins = ImageLoader(self.config)
+        if self.config['data']['mask_type'] == 'coco':
+            print("DEBUG: Using Coco GT Mask")
+            self.data_ins = ImageLoadeCOCO(self.config)
+        else:
+            self.data_ins = ImageLoader(self.config)
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
