@@ -26,7 +26,7 @@ data:
   train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
-  num_examples: 1281167
+  num_examples: 12000
 
 optimizer:
   type: lars

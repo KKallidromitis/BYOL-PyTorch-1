@@ -19,7 +19,6 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-from losses import DetconInfoNCECriterion
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -51,7 +50,6 @@ class BYOLTrainer():
         self.lr_type = self.config['optimizer']['lr_type']
 
         self.base_mm = self.config['model']['base_momentum']
-        self.forward_loss = DetconInfoNCECriterion(config)
         
         """construct the whole network"""
         self.resume_path = self.config['checkpoint']['resume_path']
@@ -187,6 +185,14 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
+    def forward_loss(self, preds, targets):
+        #import ipdb;ipdb.set_trace()
+        bz = preds.size(0)
+        preds_norm = F.normalize(preds, dim=-1)
+        targets_norm = F.normalize(targets, dim=-1)
+        loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
+        return loss
+    
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()
@@ -222,7 +228,7 @@ class BYOLTrainer():
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(target_z, q, tinds.to('cuda'), pinds.to('cuda'))
+            loss = self.forward_loss(q,target_z)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':

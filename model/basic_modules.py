@@ -48,15 +48,9 @@ class EncoderwithProjection(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
         
-    def forward(self, x, masks, mnet=None):
+    def forward(self, x, masks,mask_ids, mnet=None):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
-        masks,mask_ids = sample_masks(masks)
-        
-        if mnet!=None:
-            pertubation = torch.reshape(mnet(x.detach()),(-1, 16, 49))
-            masks = pertubation + masks.to('cuda')
-        
         
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
