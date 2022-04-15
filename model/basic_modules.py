@@ -52,7 +52,7 @@ class EncoderwithProjection(nn.Module):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
         masks,mask_ids = sample_masks(masks)
-        
+
         if mnet!=None:
             pertubation = torch.reshape(mnet(x.detach()),(-1, 16, 49))
             masks = pertubation + masks.to('cuda')
@@ -60,6 +60,7 @@ class EncoderwithProjection(nn.Module):
         
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
+        x = x.permute(0,2,3,1) #(B, 7, 7, 2048)
         masks_area = masks.sum(axis=-1, keepdims=True)
         smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
         embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
