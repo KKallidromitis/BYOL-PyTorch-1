@@ -28,7 +28,9 @@ def run_task(config):
         config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
 
     trainer = BYOLTrainer(config)
-    trainer.resume_model()
+    rs = '/shared/jacklishufan/04_13_19-46_resnet50_300.pth.tar'
+    rs = None
+    trainer.resume_model(model_path=rs)
     start_epoch = trainer.start_epoch
 
     for epoch in range(start_epoch + 1, trainer.total_epochs + 1):

@@ -187,6 +187,7 @@ class BYOLTrainer():
         
     def forward_loss(self, preds, targets):
         #import ipdb;ipdb.set_trace()
+        #breakpoint()
         bz = preds.size(0)
         preds_norm = F.normalize(preds, dim=-1)
         targets_norm = F.normalize(targets, dim=-1)
