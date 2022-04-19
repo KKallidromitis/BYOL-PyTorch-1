@@ -19,6 +19,7 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
+#from losses import DetconInfoNCECriterion
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -50,6 +51,7 @@ class BYOLTrainer():
         self.lr_type = self.config['optimizer']['lr_type']
 
         self.base_mm = self.config['model']['base_momentum']
+        #self.forward_loss = DetconInfoNCECriterion(config)
         
         """construct the whole network"""
         self.resume_path = self.config['checkpoint']['resume_path']
@@ -285,4 +287,3 @@ class BYOLTrainer():
                 'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
                 'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
             })
-
