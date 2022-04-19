@@ -43,8 +43,7 @@ parser.add_argument('--epochs', default=80, type=int, metavar='N',
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=1024, type=int,
-                    metavar='N',
-                    help='mini-batch size (default: 256), this is the total '
+                    metavar='N', help='global-batch size (default: 1024), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.2, type=float,
@@ -74,6 +73,8 @@ parser.add_argument('--seed', default=0, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
+parser.add_argument('--mini-test', action='store_true',
+                    help='Mini test on a very tiny subsample to test the code')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -87,7 +88,7 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
-
+    print(args)
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -144,8 +145,10 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     
     # init wandb
+    print(args.mini_test)
     if not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0):
-        wandb.init()
+        if not args.mini_test:
+            wandb.init()
 
     # create model
     print("=> creating model '{}'".format(args.arch))
@@ -159,6 +162,7 @@ def main_worker(gpu, ngpus_per_node, args):
     model.fc.weight.data.normal_(mean=0.0, std=0.01)
     model.fc.bias.data.zero_()
 
+    # load from pre-trained, before DistributedDataParallel constructor
     # load from pre-trained, before DistributedDataParallel constructor
     if args.pretrained:
         if os.path.isfile(args.pretrained):
@@ -191,17 +195,20 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             print("=> no checkpoint found at '{}'".format(args.pretrained))
 
+
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
+            # Note: During command from README, code enters here!
             torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
+            print(f"GPU 0 is using batch-size {args.batch_size}")
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         else:
@@ -209,6 +216,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
+
     elif args.gpu is not None:
         torch.cuda.set_device(args.gpu)
         model = model.cuda(args.gpu)
@@ -271,8 +279,9 @@ def main_worker(gpu, ngpus_per_node, args):
             normalize,
         ]))
 
-    #TODO: UNCOMMENT
-    train_dataset, _ = torch.utils.data.random_split(train_dataset, (10, len(train_dataset)-10))
+    if args.mini_test:
+        train_dataset = torch.utils.data.Subset(train_dataset,range(100))
+
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -282,14 +291,17 @@ def main_worker(gpu, ngpus_per_node, args):
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-
-    val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
+    
+    val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             normalize,
-        ])),
+        ]))
+    if args.mini_test:
+        val_dataset = torch.utils.data.Subset(val_dataset,range(100))
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
@@ -321,9 +333,14 @@ def main_worker(gpu, ngpus_per_node, args):
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
             }, is_best)
-            wandb.log({"Test Accuracy": acc1})
+            if  args.mini_test:
+                print("Test Accuracy",acc1)
+            else:
+                wandb.log({"Test Accuracy": acc1})
             if epoch == args.start_epoch:
                 sanity_check(model.state_dict(), args.pretrained)
+    if args.multiprocessing_distributed and args.rank % ngpus_per_node == 0:
+        wandb.finish()
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -418,7 +435,6 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
-
     return top1.avg
 
 
@@ -453,7 +469,6 @@ def sanity_check(state_dict, pretrained_weights):
             new_k = "module." + new_k
             assert ((state_dict[new_k].cpu() == state_dict_pre[k]).all()), f'{new_k} is changed in training'
     print("=> Sanity check passed!")
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
