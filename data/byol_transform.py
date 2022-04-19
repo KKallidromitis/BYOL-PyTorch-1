@@ -14,10 +14,37 @@ class MultiViewDataInjector():
     def __init__(self, transform_list):
         self.transform_list = transform_list
 
+    def _get_crop_box(self,image):
+        return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
+
     def __call__(self,sample,mask):
-        output,mask = zip(*[transform(sample,mask) for transform in self.transform_list])
-        output_cat = torch.stack(output, dim=0)
-        mask_cat = torch.stack(mask)
+        i1, j1, h1, w1 = self._get_crop_box(sample)
+        i2, j2, h2, w2 = self._get_crop_box(sample)
+        #assert i1 != i2, f"{(i1, j1, h1, w1)}!={i2, j2, h2, w2}"
+        i_min = max(i1,i2)
+        i_max = min(i1+h1,i2+h2)
+        j_min = max(j1,j2)
+        j_max = min(j1+w1,j2+w2)
+        h = i_max-i_min
+        w = j_max-j_min
+        area = h * w if h > 0 and w > 0 else 0
+        # assert h > 0 
+        # assert w > 0
+        # print((i1, j1, h1, w1),(i2, j2, h2, w2))
+        # assert area > 0 # Must postive intersection area between views
+        #assert()
+        #breakpoint()
+        intersect_masks = torch.zeros_like(mask)
+        if area > 0:
+            intersect_masks[:,i_min:i_max,j_min:j_max] = 1
+        #breakpoint()
+        mask = intersect_masks * mask
+        #assert mask.sum() > 0
+        assert len(self.transform_list) == 2
+        output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1))
+        output1,mask1 = self.transform_list[1](sample,mask,(i1, j1, h1, w1))
+        output_cat = torch.stack([output0,output1], dim=0)
+        mask_cat = torch.stack([mask0,mask1])
         
         return output_cat,mask_cat
 
@@ -25,7 +52,16 @@ class SSLMaskDataset(VisionDataset):
     def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
         self.root = root
         self.transform = transform
-        self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
+        #self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
+        with open('1percent.txt') as f:
+            samples = f.readlines()
+            samples = [x.replace('\n','').strip() for x in samples ]
+            samples = [x for x in samples if x]
+            samples = [(os.path.join(root,x.split('_')[0],x),None) for x in samples]
+            #samples = [x for x in samples if os.path.exists(x[0])]
+           
+            print("total files:",len(samples))
+            self.samples = samples
         self.loader = default_loader
         self.img_to_mask = self._get_masks(mask_file)
 
@@ -40,9 +76,12 @@ class SSLMaskDataset(VisionDataset):
         sample = self.loader(path)
         
         # Load Mask
-        with open(self.img_to_mask[index], "rb") as file:
+        with open(self.img_to_mask[index].replace(
+            '/home/kkallidromitis/data/sample/masks/train_tf',
+            '/home/jacklishufan/detconb/imagenet/masks/train_tf'
+        ), "rb") as file:
             mask = pickle.load(file)
-
+            mask += 1 # no zero, reserved for nothing
         # Apply transforms
         if self.transform is not None:
             sample,mask = self.transform(sample,mask.unsqueeze(0))
@@ -78,15 +117,16 @@ class COCOMaskDataset(VisionDataset):
         # Load Image
         sample = self.loader(path)
         anns = self.coco.loadAnns(self.coco.getAnnIds(id))
-        mask = np.max(np.stack([self.coco.annToMask(ann) * ann["category_id"] 
-                                                 for ann in anns]), axis=0)
-
+        mask = np.max(np.stack([self.coco.annToMask(ann) * (idx + 1)
+                                                 for idx,ann in enumerate(anns)]), axis=0) #instance
+        # idx==0 is background
         # print(np.unique(mask))
         # return sample,mask
         # Apply transforms
         mask = torch.LongTensor(mask)
         if self.transform is not None:
             sample,mask = self.transform(sample,mask.unsqueeze(0))
+        #breakpoint()
         return sample,mask
 
     def __len__(self) -> int:
@@ -109,9 +149,12 @@ class CustomCompose:
         self.t_list = t_list
         self.p_list = p_list
         
-    def __call__(self, img, mask):
+    def __call__(self, img, mask,cordinates):
         for p in self.p_list:
-            img,mask = p(img,mask)
+            if isinstance(p,MaskRandomResizedCrop):
+                img,mask = p(img,mask,cordinates)
+            else:
+                img,mask = p(img,mask)
         for t in self.t_list:
             img = t(img)
         return img,mask
@@ -131,7 +174,7 @@ class MaskRandomResizedCrop():
         self.totensor = transforms.ToTensor()
         self.topil = transforms.ToPILImage()
         
-    def __call__(self, image, mask):
+    def __call__(self, image, mask,cordinates):
         
         """
         Args:
@@ -142,7 +185,8 @@ class MaskRandomResizedCrop():
             Mask Tensor: Randomly cropped/resized mask.
         """
         #import ipdb;ipdb.set_trace()
-        i, j, h, w = transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
+        i,j,h,w = cordinates
+        #i, j, h, w = transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
         image = transforms.functional.resize(transforms.functional.crop(image, i, j, h, w),(self.size,self.size),interpolation=transforms.functional.InterpolationMode.BICUBIC)
         
         image = self.topil(torch.clip(self.totensor(image),min=0, max=255))
@@ -183,7 +227,8 @@ class Solarize():
     def __call__(self, sample):
         return ImageOps.solarize(sample, self.threshold)
 
-def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224):
+def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224,crop_cordinates=None):
+    #i, j, h, w = crop_cordinates
     t_list = []
     color_jitter = transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],

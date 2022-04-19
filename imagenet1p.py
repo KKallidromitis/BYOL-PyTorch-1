@@ -41,8 +41,8 @@ def main(imagenet_dir,output_dir,txt_path):
 if __name__=="__main__":
     
     #Change Location here
-    imagenet_dir = '/home/kkallidromitis/data/imagenet/images/train'
-    output_dir = '/home/kkallidromitis/data/sample/images/train'
-    txt_path = '/home/kkallidromitis/data/imagenet/raw/1percent.txt'
+    imagenet_dir = '/home/jacklishufan/detconb/imagenet/images'
+    output_dir = '/home/jacklishufan/data/sample/images/train'
+    txt_path = './1percent.txt'
     
     main(imagenet_dir,output_dir,txt_path)

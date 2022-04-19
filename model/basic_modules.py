@@ -10,13 +10,15 @@ class MLP(nn.Module):
         super().__init__()
 
         self.l1 = nn.Linear(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(mask_roi)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.relu1 = nn.ReLU(inplace=True)
         self.l2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
         x = self.l1(x)
-        x = self.bn1(x)
+        batch_size,n_channal,n_emb= x.shape # B * 16 * f
+        x = self.bn1(x.reshape(batch_size*n_channal,n_emb))
+        x = x.reshape(batch_size,n_channal,n_emb)
         x = self.relu1(x)
         x = self.l2(x)
         return x
@@ -57,8 +59,11 @@ class EncoderwithProjection(nn.Module):
         x = x.permute(0,2,3,1) # (B,7,7,2048)
         masks_area = masks.sum(axis=-1, keepdims=True)
         smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
+        #smpl_masks = torch.ones((bs,1,49))
+        #Overwreite with standard BYOL
+        #breakpoint()
         embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
-        breakpoint()
+        #breakpoint()
         x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
         x = self.projetion(x)

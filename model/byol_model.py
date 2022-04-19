@@ -36,17 +36,18 @@ class BYOLModel(torch.nn.Module):
     def forward(self, view1, view2, mm, masks):
         # online network forward
         #import ipdb;ipdb.set_trace()
-        
+        #breakpoint()
         masks = torch.cat([ masks[:,i,:,:,:] for i in range(masks.shape[1])])
         masks = convert_binary_mask(masks)
         masks,mask_ids = sample_masks(masks)
         
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks,mask_ids,None))
-
+        masks_a = masks[:32]
+        masks_b = masks[32:]
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks,mask_ids,None)
+            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),torch.cat([masks_b,masks_a]),mask_ids,None)
             target_z = target_z.detach().clone()
 
-        return q, target_z, pinds, tinds
+        return q, target_z, pinds, tinds,masks

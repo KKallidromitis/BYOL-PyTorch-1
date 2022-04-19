@@ -26,12 +26,16 @@ def create_patch_mask(image,segments=[3,2]):
         
     return mask.int()
 
-def convert_binary_mask(mask,max_mask_id=256,pool_size=7):
+def convert_binary_mask(mask,max_mask_id=257,pool_size=7):
+    #breakpoint()
     batch_size = mask.shape[0]
     mask_ids = torch.arange(max_mask_id).reshape(1,max_mask_id, 1, 1).float().to('cuda')
-    binary_mask = torch.eq(mask_ids, mask).float()
-    binary_mask = torch.nn.AdaptiveAvgPool2d((pool_size,pool_size))(binary_mask)
-    binary_mask = torch.reshape(binary_mask,(batch_size,max_mask_id,pool_size*pool_size)).permute(0,2,1)
+    binary_mask = torch.eq(mask_ids, mask).float() # 64, 256, 224, 224]
+    binary_mask = torch.nn.AdaptiveAvgPool2d((pool_size,pool_size))(binary_mask) # 64, 256, 7, 7
+    binary_mask = binary_mask.reshape(batch_size,max_mask_id,pool_size*pool_size)
+    #breakpoint()
+    return binary_mask
+    binary_mask = torch.reshape(binary_mask,(batch_size,max_mask_id,pool_size*pool_size)).permute(0,2,1) #64,49,256
     binary_mask = torch.argmax(binary_mask, axis=-1)
     binary_mask = torch.eye(max_mask_id)[binary_mask]
     binary_mask = binary_mask.permute(0, 2, 1)
@@ -43,10 +47,12 @@ def sample_masks(binary_mask,n_masks=16):
     sel_masks = mask_exists.float() + 0.00000000001
     sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
     sel_masks = torch.log(sel_masks)
+    sel_masks = sel_masks[:,1:]
+    #breakpoint()
     
     dist = torch.distributions.categorical.Categorical(logits=sel_masks)
     mask_ids = dist.sample([n_masks]).T
-    
+    mask_ids += 1 # never sample background
     sample_mask = torch.stack([binary_mask[b][mask_ids[b]] for b in range(batch_size)])
     
     return sample_mask,mask_ids

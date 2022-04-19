@@ -1,5 +1,7 @@
 #-*- coding:utf-8 -*-
+from math import gamma
 import os
+from random import betavariate
 import time
 import datetime
 
@@ -19,7 +21,7 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-
+from utils.math import xlogx
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
@@ -185,14 +187,38 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets):
+    def forward_loss(self, preds, targets,masks):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
-        bz = preds.size(0)
-        preds_norm = F.normalize(preds, dim=-1)
-        targets_norm = F.normalize(targets, dim=-1)
-        loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
-        return loss
+        preds = F.normalize(preds, dim=-1) 
+        targets = F.normalize(targets, dim=-1) 
+        bz,ch,emb = preds.shape
+        breakpoint()
+        #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
+        p = F.softmax(preds, dim=-1) 
+        #p_log = F.log_softmax(preds, dim=-1)
+        #q = F.softmax(targets, dim=-1) 
+        n_f =  np.log(emb)
+        n_b = np.log(bz*ch)
+        #breakpoint()
+        eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
+        inv_loss =2 - 2 * (preds * targets).sum() / (ch*bz)# H(p,q)^2
+        #Numerical stable approximation
+        #r = p.mean(dim=(0,1)) #  emb 
+        #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
+        r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
+        eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
+        #log_r =  F.log_softmax(r_r,dim=-1) # emb
+        #eh_dist = -(xlogx(r)).sum()/ n_f
+        loss = inv_loss # standard BYOL
+        # alpha  = 0
+        # beta = 100
+        # theta = 1000
+        # loss = alpha * eh_obj + beta * eh_dist +theta * inv_loss
+        # loss /= (alpha+beta+theta)
+        #breakpoint()
+        #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
+        return loss,eh_obj,eh_dist,inv_loss
     
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -210,6 +236,7 @@ class BYOLTrainer():
         prefetcher = data_prefetcher(self.train_loader)
         images, masks = prefetcher.next()
         i = 0
+        breakpoint()
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)
@@ -225,11 +252,11 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'))
+            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks.to('cuda'))
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss = self.forward_loss(q,target_z)
+            loss,eh_obj,eh_dist,inv_loss = self.forward_loss(q,target_z,down_sampled_masks)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -259,6 +286,9 @@ class BYOLTrainer():
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
                     'mm': round(self.mm, 5),
                     'loss': round(loss_meter.val, 5),
+                    "eh_obj":round(eh_obj.item(),5),
+                    "eh_dist":round(eh_dist.item(),5),
+                    "inv_loss":round(inv_loss.item(),5),
                     'Batch Time': round(batch_time.val, 5),
                     'Data Time': round(data_time.val, 5),
                     'Forward Time': round(forward_time.val, 5),
