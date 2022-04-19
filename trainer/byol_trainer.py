@@ -16,8 +16,10 @@ from apex import amp
 from model import BYOLModel
 from optimizer import LARS
 from data import ImageNetLoader
-from utils import params_util, logging_util, eval_util
+from utils import params_util, logging_util, eval_util, distributed_utils
 from utils.data_prefetcher import data_prefetcher
+
+import builtins
 
 
 class BYOLTrainer():
@@ -25,12 +27,21 @@ class BYOLTrainer():
         self.config = config
         self.time_stamp = self.config['checkpoint'].get('time_stamp',
             datetime.datetime.now().strftime('%m%d_%H-%M'))
+        
+        """set seed"""
+        distributed_utils.set_seed(self.config['seed'])
 
         """device parameters"""
         self.world_size = self.config['world_size']
         self.rank = self.config['rank']
         self.gpu = self.config['local_rank']
         self.distributed = self.config['distributed']
+
+        """ Supress printing """
+        if self.distributed and self.rank != 0:
+            def print_pass(*args):
+                pass
+            builtins.print = print_pass
 
         """get the train parameters!"""
         self.total_epochs = self.config['optimizer']['total_epochs']
@@ -202,12 +213,14 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z = self.model(view1, view2, self.mm)
+            # Pass view1, view 2 through network
+            q1, q2, nn1_target, nn2_target = self.model(view1, view2, self.mm)
             forward_time.update(time.time() - tflag)
-
+            
+            # Compute loss
             tflag = time.time()
-            loss = self.forward_loss(q, target_z)
-
+            # Loss between v1 <->v2
+            loss = 0.5 * self.forward_loss(q1, nn2_target) + 0.5 * self.forward_loss(q2, nn1_target)
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
                 loss.backward()
