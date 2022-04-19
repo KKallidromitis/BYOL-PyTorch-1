@@ -3,8 +3,8 @@ model:
   backbone:
     type: "resnet50"
     pretrained: false
-  projection:
-    type: "MLP"
+  projection:   # src: A.2 of detcon paper
+    type: "MLP" 
     input_dim: 2048
     hidden_dim: 4096
     output_dim: 256
@@ -19,26 +19,26 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: ""
-  mask_type: "coco"
-  resize_size: 224
+  image_dir: "/home/kkallidromitis/data/sample/" #TODO: Change to match Japan Cluster
+  mask_type: "fh"
+  resize_size: 224 # src: 3.1
   data_workers: 16
-  train_batch_size: 4
-  val_batch_size: 4
+  train_batch_size: 128 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  val_batch_size: 32 #  Should not matter
   dual_views: true
-  num_examples: 118287 #1281167
+  num_examples: 12811
 
 optimizer:
   type: lars
   base_lr: 0.3
-  lr_type: "piecewise"
-  momentum: 0.9
+  lr_type: "cosine"
+  momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
   total_epochs: 300
-  warmup_epochs: 3 # should be 1/100 of total epoches
+  warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
-loss:
+loss: #src: 3.1
   temperature: 0.1
   mask_rois: 16
 
