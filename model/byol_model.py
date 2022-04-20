@@ -42,8 +42,9 @@ class BYOLModel(torch.nn.Module):
         masks,mask_ids = sample_masks(masks)
         
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks,mask_ids,None))
-        masks_a = masks[:32]
-        masks_b = masks[32:]
+        mask_batch_size = masks.shape[0] // 2
+        masks_a = masks[:mask_batch_size]
+        masks_b = masks[mask_batch_size:]
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)

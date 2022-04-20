@@ -191,7 +191,8 @@ class BYOLTrainer():
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         weights = masks.sum(dim=-1)
-        weights = weights[:32]+weights[32:]/2
+        mask_batch_size = masks.shape[0] // 2
+        weights = weights[:mask_batch_size]+weights[mask_batch_size:]/2
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
