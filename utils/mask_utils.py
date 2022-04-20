@@ -44,14 +44,18 @@ def convert_binary_mask(mask,max_mask_id=257,pool_size=7):
 def sample_masks(binary_mask,n_masks=16):
     batch_size=binary_mask.shape[0]
     mask_exists = torch.greater(binary_mask.sum(-1), 1e-3)
+    mask_exists = mask_exists[:32].float()+mask_exists[32:].float() >=2
     sel_masks = mask_exists.float() + 0.00000000001
+    #breakpoint()
     sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
     sel_masks = torch.log(sel_masks)
     sel_masks = sel_masks[:,1:]
-    #breakpoint()
     
     dist = torch.distributions.categorical.Categorical(logits=sel_masks)
     mask_ids = dist.sample([n_masks]).T
+    mask_ids = mask_ids.repeat([2,1])
+    #breakpoint()
+    #mask_ids[32:]=mask_ids[:32]
     mask_ids += 1 # never sample background
     sample_mask = torch.stack([binary_mask[b][mask_ids[b]] for b in range(batch_size)])
     

@@ -32,7 +32,7 @@ data:
 
 optimizer:
   type: lars
-  base_lr: 4.8
+  base_lr: 0.3
   lr_type: "cosine"
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6

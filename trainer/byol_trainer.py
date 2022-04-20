@@ -190,10 +190,13 @@ class BYOLTrainer():
     def forward_loss(self, preds, targets,masks):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
+        weights = masks.sum(dim=-1)
+        weights = weights[:32]+weights[32:]/2
+        weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
         bz,ch,emb = preds.shape
-        breakpoint()
+        #breakpoint()
         #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
         p = F.softmax(preds, dim=-1) 
         #p_log = F.log_softmax(preds, dim=-1)
@@ -202,7 +205,12 @@ class BYOLTrainer():
         n_b = np.log(bz*ch)
         #breakpoint()
         eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
-        inv_loss =2 - 2 * (preds * targets).sum() / (ch*bz)# H(p,q)^2
+        #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
+        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
+        if weights.sum() == 0:
+            inv_loss = 0
+        else:
+            inv_loss = inv_loss.sum() / weights.sum()
         #Numerical stable approximation
         #r = p.mean(dim=(0,1)) #  emb 
         #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
@@ -236,7 +244,7 @@ class BYOLTrainer():
         prefetcher = data_prefetcher(self.train_loader)
         images, masks = prefetcher.next()
         i = 0
-        breakpoint()
+        #breakpoint()
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)

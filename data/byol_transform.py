@@ -42,7 +42,7 @@ class MultiViewDataInjector():
         #assert mask.sum() > 0
         assert len(self.transform_list) == 2
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1))
-        output1,mask1 = self.transform_list[1](sample,mask,(i1, j1, h1, w1))
+        output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2))
         output_cat = torch.stack([output0,output1], dim=0)
         mask_cat = torch.stack([mask0,mask1])
         
