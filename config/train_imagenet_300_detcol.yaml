@@ -37,6 +37,7 @@ optimizer:
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
   total_epochs: 301
+  over_lap_mask: true
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 

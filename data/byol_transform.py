@@ -11,8 +11,9 @@ from pycocotools.coco import COCO
 import os
 
 class MultiViewDataInjector():
-    def __init__(self, transform_list):
+    def __init__(self, transform_list,over_lap_mask=True):
         self.transform_list = transform_list
+        self.over_lap_mask = over_lap_mask
 
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
@@ -34,11 +35,12 @@ class MultiViewDataInjector():
         # assert area > 0 # Must postive intersection area between views
         #assert()
         #breakpoint()
-        intersect_masks = torch.zeros_like(mask)
-        if area > 0:
-            intersect_masks[:,i_min:i_max,j_min:j_max] = 1
-        #breakpoint()
-        mask = intersect_masks * mask
+        if self.over_lap_mask:
+            intersect_masks = torch.zeros_like(mask)
+            if area > 0:
+                intersect_masks[:,i_min:i_max,j_min:j_max] = 1
+            #breakpoint()
+            mask = intersect_masks * mask
         #assert mask.sum() > 0
         assert len(self.transform_list) == 2
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1))
@@ -49,7 +51,7 @@ class MultiViewDataInjector():
         return output_cat,mask_cat
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
+    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=''):
         self.root = root
         self.transform = transform
         #self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
@@ -64,6 +66,7 @@ class SSLMaskDataset(VisionDataset):
             self.samples = samples
         self.loader = default_loader
         self.img_to_mask = self._get_masks(mask_file)
+        self.mask_file_path = mask_file_path
 
     def _get_masks(self, mask_file):
         with open(mask_file, "rb") as file:
@@ -76,10 +79,9 @@ class SSLMaskDataset(VisionDataset):
         sample = self.loader(path)
         
         # Load Mask
-        with open(self.img_to_mask[index].replace(
-            '/home/kkallidromitis/data/sample/masks/train_tf',
-            '/home/jacklishufan/detconb/imagenet/masks/train_tf'
-        ), "rb") as file:
+        mask_file_name = self.img_to_mask[index].split('/')[-1]
+        mask_file_path = os.path.join(self.mask_file_path,mask_file_name)
+        with open(mask_file_path, "rb") as file:
             mask = pickle.load(file)
             mask += 1 # no zero, reserved for nothing
         # Apply transforms

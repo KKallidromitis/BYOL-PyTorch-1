@@ -39,12 +39,13 @@ class ImageLoader():
         #import ipdb;ipdb.set_trace()
         image_dir = os.path.join(self.image_dir,'images', f"{'train' if stage in ('train', 'ft') else 'val'}")
         mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
+        mask_file_path = os.path.join(self.image_dir,'masks','train_tf')
         
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform = MultiViewDataInjector([transform1, transform2])
         
-        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform)
+        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform,mask_file_path=mask_file_path)
         return dataset
 
     def set_epoch(self, epoch):
@@ -62,6 +63,7 @@ class ImageLoadeCOCO():
         self.data_workers = config['data']['data_workers']
         self.dual_views = config['data']['dual_views']
         self.mask_type = config['data']['mask_type']
+        self.over_lap_mask = config['data'].get('over_lap_mask',True)
 
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
@@ -88,7 +90,7 @@ class ImageLoadeCOCO():
         #mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
-        transform = MultiViewDataInjector([transform1, transform2])
+        transform = MultiViewDataInjector([transform1, transform2],self.over_lap_mask)
         annoFile = os.path.join(self.image_dir,'annotations', f"{'instances_train2017.json' if stage in ('train', 'ft') else 'instances_val2017.json'}")
         dataset = COCOMaskDataset(image_dir,annoFile,transform)
         return dataset
