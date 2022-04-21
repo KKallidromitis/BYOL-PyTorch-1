@@ -190,9 +190,57 @@ class BYOLTrainer():
     def forward_loss(self, preds, targets,masks):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
+        return self._forward_masked_byol_loss(preds, targets,masks)
+
+    def _forward_new_hel_loss(self, preds, targets,masks):
+        #NOT WORKING
         weights = masks.sum(dim=-1)
         mask_batch_size = masks.shape[0] // 2
-        weights = weights[:mask_batch_size]+weights[mask_batch_size:]/2
+        weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+        weights = torch.sqrt(weights)
+        weights = weights.repeat([2,1])
+        #preds = F.normalize(preds, dim=-1) 
+        #targets = F.normalize(targets, dim=-1) 
+        bz,ch,emb = preds.shape
+        #breakpoint()
+        #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
+        p = F.softmax(preds, dim=-1) 
+        #p_log = F.log_softmax(preds, dim=-1)
+        q = F.softmax(targets, dim=-1) 
+        n_f =  np.log(emb)
+        n_b = np.log(bz*ch)
+        #breakpoint()
+        eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
+        #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
+        inv_loss = ((torch.sqrt(p)-torch.sqrt(q))**2).sum(dim=-1) * weights
+        if weights.sum() == 0:
+            inv_loss = 0
+        else:
+            inv_loss = inv_loss.sum() / weights.sum()
+        #Numerical stable approximation
+        #r = p.mean(dim=(0,1)) #  emb 
+        #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
+        r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
+        eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
+        #log_r =  F.log_softmax(r_r,dim=-1) # emb
+        #eh_dist = -(xlogx(r)).sum()/ n_f
+        loss = inv_loss # standard BYOL
+        # alpha  = 0
+        # beta = 100
+        # theta = 1000
+        # loss = alpha * eh_obj + beta * eh_dist +theta * inv_loss
+        # loss /= (alpha+beta+theta)
+        #breakpoint()
+        #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
+        return loss,eh_obj,eh_dist,inv_loss
+    
+    def _forward_masked_byol_loss(self, preds, targets,masks):
+        #import ipdb;ipdb.set_trace()
+        #breakpoint()
+        weights = masks.sum(dim=-1)
+        mask_batch_size = masks.shape[0] // 2
+        weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+        weights = torch.sqrt(weights)
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
@@ -228,7 +276,7 @@ class BYOLTrainer():
         #breakpoint()
         #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
         return loss,eh_obj,eh_dist,inv_loss
-    
+ 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()
@@ -261,7 +309,7 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks.to('cuda'))
+            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
