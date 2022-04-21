@@ -63,7 +63,7 @@ class SSLMaskDataset(VisionDataset):
             #samples = [x for x in samples if os.path.exists(x[0])]
            
             print("total files:",len(samples))
-            self.samples = samples
+            self.samples = sorted(samples)
         self.loader = default_loader
         self.img_to_mask = self._get_masks(mask_file)
         self.mask_file_path = mask_file_path
