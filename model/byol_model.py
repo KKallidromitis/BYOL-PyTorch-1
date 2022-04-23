@@ -1,5 +1,5 @@
 #-*- coding:utf-8 -*-
-# Nearest neighbor code from https://github.com/vturrisi/solo-learn/blob/main/solo/methods/nnclr.py
+# Nearest neighbor code from https://github.com/vturrisi/solo-learn/blob/main/solo/methods/nnbyol.py
 import torch
 from .basic_modules import EncoderwithProjection, Predictor
 from utils.distributed_utils import gather_from_all
@@ -27,6 +27,8 @@ class BYOLModel(torch.nn.Module):
         self.queue = torch.nn.functional.normalize(self.queue, dim=1)
         # setup the queue pointer
         self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
+        # Setup queue for nearest neighbor class comparision
+        self.register_buffer("queue_y", -torch.ones(self.queue_size, dtype=torch.long))
 
     @torch.no_grad()
     def _initializes_target_network(self):
@@ -41,13 +43,15 @@ class BYOLModel(torch.nn.Module):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
     @torch.no_grad()
-    def dequeue_and_enqueue(self, z: torch.Tensor):
+    def dequeue_and_enqueue(self, z: torch.Tensor, y: torch.Tensor):
         """Adds new samples and removes old samples from the queue in a fifo manner.
         Args:
             z (torch.Tensor): batch of projected features.
+            y (torch.Tensor): batch of labels
         """
-
+        # TODO: CHECK MULTINODE
         z = gather_from_all(z)
+        y = gather_from_all(y)
         
         batch_size = z.shape[0]
 
@@ -55,6 +59,8 @@ class BYOLModel(torch.nn.Module):
         assert self.queue_size % batch_size == 0
 
         self.queue[ptr : ptr + batch_size, :] = z
+        self.queue_y[ptr : ptr + batch_size] = y
+
         ptr = (ptr + batch_size) % self.queue_size
 
         self.queue_ptr[0] = ptr  # type: ignore
@@ -92,12 +98,8 @@ class BYOLModel(torch.nn.Module):
 
         # Nearest Neighbor
         # Get nearest neighbor (using target network embeddings as per "With a Little Help From Your Friends...")
-        _, nn1_target = self.find_nn(target_z[:batch_size])
-        _, nn2_target = self.find_nn(target_z[batch_size:])
+        idx1, nn1_target = self.find_nn(target_z[:batch_size])
+        idx2, nn2_target = self.find_nn(target_z[batch_size:])
 
-        # Update queue
-        self.dequeue_and_enqueue(target_z[:batch_size])
-
-        # Returns q1 (view 1), q2 (view 2), nn1 (from view 1), nn2 (from view 2)
-        #TODO: CHECK CONCAT?
-        return q[:batch_size], q[batch_size:], nn1_target, nn2_target
+        # Returns q1 (view 1), q2 (view 2), nn1 (from view 1), nn1_idx, nn2 (from view 2), nn2_idx, target1, target 2
+        return q[:batch_size], q[batch_size:], nn1_target, self.queue_y[idx1], nn2_target, self.queue_y[idx2], target_z[:batch_size], target_z[batch_size:]
