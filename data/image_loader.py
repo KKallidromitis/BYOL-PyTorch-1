@@ -44,8 +44,9 @@ class ImageLoader():
         
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
+        transform3 = get_transform('raw')
         #breakpoint()
-        transform = MultiViewDataInjector([transform1, transform2],self.over_lap_mask)
+        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask)
         
         dataset = SSLMaskDataset(image_dir,mask_file,transform=transform,mask_file_path=mask_file_path)
         return dataset

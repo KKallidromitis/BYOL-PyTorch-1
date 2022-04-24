@@ -1,9 +1,11 @@
 #-*- coding:utf-8 -*-
+import imp
 import torch
 import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
+import numpy as np
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -35,6 +37,50 @@ class Masknet(nn.Module):
         y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
         return y
 
+class SpatialAttentionBlock(nn.Module):
+
+    def __init__(self,in_dim=2048,atten_dim=64,emb_dim=64):
+        super().__init__()
+        self.k_map = nn.Conv2d(in_dim,atten_dim,1)
+        self.q_map = nn.Conv2d(in_dim,atten_dim,1)
+        self.v_map = nn.Conv2d(in_dim,emb_dim,1)
+        self.atten_dim = atten_dim
+
+    def forward(self, x):
+        #B X C X (H X W)
+        b,_,h,w = x.shape
+        q = self.q_map(x)   # B X atten_dim X (H X W) 
+        k = self.k_map(x)   # B X atten_dim X (H X W) 
+        v = self.v_map(x)   # B X emb_dim X (H X W) 
+        atten =torch.einsum('bcxy,bcij->bxyij',q,k) # B X (H X W) X( H X W)
+        atten /= self.atten_dim
+        atten = atten.reshape(b,h,w,h*w)
+        atten = F.softmax(atten,dim=-1)
+        atten = atten.reshape(b,h,w,h,w)
+        out = torch.einsum('bxyij,bdij->bxyd',atten,v) # B X( H X W) X d_emb
+        return out.permute(0,3,1,2)
+        ##torch.bmm(k.reshape(2,64,49).permute(0,2,1),q.reshape(2,64,49)
+        
+
+class SpatialAttentionMasknet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(2048, 2048, 1)
+        self.conv2 = nn.Conv2d(2048, 2048, 1)
+        self.atten = SpatialAttentionBlock(2048,64,16)
+        self.conv3 = nn.Conv2d(2048, 16, 1)
+
+    def forward(self, x):
+        #7x7x2048
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        #breakpoint()
+        x = self.atten(x) +self.conv3(x)
+        x = F.softmax(x,dim=1) # B X C X H X W
+        return x
+
+
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -55,6 +101,8 @@ class EncoderwithProjection(nn.Module):
         x = self.encoder(x) #(B, 2048, 7, 7)
         #breakpoint()
         # Detcon mask multiply
+        if mnet!= None:
+            masks = torch.reshape(mnet(x),(-1, 16, 49))
         bs, emb, emb_x, emb_y  = x.shape
         x = x.permute(0,2,3,1) # (B,7,7,2048)
         masks_area = masks.sum(axis=-1, keepdims=True)

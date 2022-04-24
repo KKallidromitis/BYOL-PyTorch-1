@@ -291,7 +291,8 @@ class BYOLTrainer():
         self.data_ins.set_epoch(epoch)
 
         prefetcher = data_prefetcher(self.train_loader)
-        images, masks = prefetcher.next()
+        images, masks,diff_transfrom = prefetcher.next()
+        #breakpoint()
         i = 0
         #breakpoint()
         while images is not None:
@@ -303,13 +304,14 @@ class BYOLTrainer():
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
-            
+            view_raw = images[:, 2, ...].contiguous()
+            masks = masks[:,:2,...].contiguous() # discard last mask
             # measure data loading time
             data_time.update(time.time() - end)
 
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks)
+            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks,view_raw,diff_transfrom)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
@@ -363,7 +365,7 @@ class BYOLTrainer():
                         f'Backward Time {backward_time.val:.4f} ({backward_time.avg:.4f})\t'
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
-            images, masks = prefetcher.next()
+            images, masks,diff_transfrom = prefetcher.next()
         if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
             wandb.log({

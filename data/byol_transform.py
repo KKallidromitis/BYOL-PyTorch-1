@@ -1,4 +1,5 @@
 #-*- coding:utf-8 -*-
+import imp
 import torch
 from torchvision import transforms
 import cv2
@@ -6,21 +7,36 @@ from PIL import Image, ImageOps
 import numpy as np
 import pickle
 from torchvision.datasets import VisionDataset
+from torchvision import ops
 from torchvision.datasets.folder import default_loader,make_dataset,IMG_EXTENSIONS
 from pycocotools.coco import COCO
 import os
 
+def get_differentialble_transform(i,j,h,w,flip,crop_size):
+        def g(x): # differentiable transform
+            # B X C X H X W
+            x = ops.roi_align(x,[ torch.FloatTensor([i,j,i+h,j+w]),],crop_size) # ROI Align == crop + resize
+            if flip:
+                x = torch.flip(x,dim=-1)
+            return x
+        return g
+
 class MultiViewDataInjector():
-    def __init__(self, transform_list,over_lap_mask=True):
+    def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224):
         self.transform_list = transform_list
         self.over_lap_mask = over_lap_mask
+        self.crop_size = crop_size
+        self.p = flip_p
 
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
 
     def __call__(self,sample,mask):
+        ww,hh = sample.size
         i1, j1, h1, w1 = self._get_crop_box(sample)
         i2, j2, h2, w2 = self._get_crop_box(sample)
+        do_flip1 = torch.rand(1) < self.p
+        do_flip2 = torch.rand(1) < self.p
         #assert i1 != i2, f"{(i1, j1, h1, w1)}!={i2, j2, h2, w2}"
         i_min = max(i1,i2)
         i_max = min(i1+h1,i2+h2)
@@ -42,13 +58,20 @@ class MultiViewDataInjector():
             #breakpoint()
             mask = intersect_masks * mask
         #assert mask.sum() > 0
-        assert len(self.transform_list) == 2
-        output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1))
-        output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2))
-        output_cat = torch.stack([output0,output1], dim=0)
-        mask_cat = torch.stack([mask0,mask1])
-        
-        return output_cat,mask_cat
+        assert len(self.transform_list) == 3
+        output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1),do_flip1)
+        output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2),do_flip2)
+        output2,mask2 = self.transform_list[2](sample,mask,(0, 0, hh, ww),False)
+        output_cat = torch.stack([output0,output1,output2], dim=0)
+        #Hard code pipeline for generate mask for encoder
+        transform1 = [i1,j1,i1+h1,j1+w1,do_flip1]
+        transform2 = [i2,j2,i2+h2,j2+w2,do_flip2]
+        transform3 = [0,0,hh,ww,0]
+        transforms = torch.FloatTensor([transform1,transform2,transform3])
+        mask_cat = torch.stack([mask0,mask1,mask2])
+        transforms[:,[0,2]] /= hh
+        transforms[:,[1,3]] /= ww
+        return output_cat,mask_cat,transforms
 
 class SSLMaskDataset(VisionDataset):
     def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=''):
@@ -86,8 +109,8 @@ class SSLMaskDataset(VisionDataset):
             mask += 1 # no zero, reserved for nothing
         # Apply transforms
         if self.transform is not None:
-            sample,mask = self.transform(sample,mask.unsqueeze(0))
-        return sample,mask
+            sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0))
+        return sample,mask,diff_transfrom
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -151,10 +174,12 @@ class CustomCompose:
         self.t_list = t_list
         self.p_list = p_list
         
-    def __call__(self, img, mask,cordinates):
+    def __call__(self, img, mask,cordinates,flip=None):
         for p in self.p_list:
             if isinstance(p,MaskRandomResizedCrop):
                 img,mask = p(img,mask,cordinates)
+            elif isinstance(p,MaskRandomHorizontalFlip):
+                img,mask = p(img,mask,flip)
             else:
                 img,mask = p(img,mask)
         for t in self.t_list:
@@ -170,11 +195,12 @@ class CustomCompose:
         return format_string
     
 class MaskRandomResizedCrop():
-    def __init__(self, size):
+    def __init__(self, size,raw = False):
         super().__init__()
         self.size = size
         self.totensor = transforms.ToTensor()
         self.topil = transforms.ToPILImage()
+        self.raw = raw # keep aspect ration
         
     def __call__(self, image, mask,cordinates):
         
@@ -189,11 +215,22 @@ class MaskRandomResizedCrop():
         #import ipdb;ipdb.set_trace()
         i,j,h,w = cordinates
         #i, j, h, w = transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
-        image = transforms.functional.resize(transforms.functional.crop(image, i, j, h, w),(self.size,self.size),interpolation=transforms.functional.InterpolationMode.BICUBIC)
-        
-        image = self.topil(torch.clip(self.totensor(image),min=0, max=255))
-        mask = transforms.functional.resize(transforms.functional.crop(mask, i, j, h, w),(self.size,self.size),interpolation=transforms.functional.InterpolationMode.NEAREST)
-        
+        if not self.raw:
+            transform = lambda x,y:transforms.functional.resize(transforms.functional.crop(x, i, j, h, w),(self.size,self.size),interpolation=y)
+        else:
+            transform = lambda x,y:transforms.functional.resize(transforms.functional.crop(x, i, j, h, w),self.size-1,max_size=self.size,interpolation=y)
+        image = transform(image,transforms.functional.InterpolationMode.BICUBIC)
+        mask = transform(mask,transforms.functional.InterpolationMode.NEAREST)
+        if self.raw:
+            _,h,w = mask.shape #curr
+            dh,dw = self.size - h,self.size-w
+            padding = transforms.Pad((0,dw,0,dh))
+            image = padding(image)
+            mask = padding(mask)
+            image = self.topil(torch.clip(self.totensor(image),min=0, max=255))
+        else:
+            image = self.topil(torch.clip(self.totensor(image),min=0, max=255))
+        #print(mask.shape)
         return [image,mask]
     
 class MaskRandomHorizontalFlip():
@@ -205,7 +242,7 @@ class MaskRandomHorizontalFlip():
         super().__init__()
         self.p = p
 
-    def __call__(self, image, mask):
+    def __call__(self, image, mask,flip=None):
         """
         Args:
             image (PIL Image or Tensor): Image to be flipped.
@@ -214,8 +251,13 @@ class MaskRandomHorizontalFlip():
             PIL Image or Tensor: Randomly flipped image.
             Mask Tensor: Randomly flipped mask.
         """
+        #overwrite flip by arg
+        if flip is not None:
+            do_flip = flip
+        else:
+            do_flip = torch.rand(1) < self.p
         
-        if torch.rand(1) < self.p:
+        if do_flip:
             image = transforms.functional.hflip(image)
             mask = transforms.functional.hflip(mask)
             return [image,mask]
@@ -267,6 +309,16 @@ def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224,crop_cordi
         p_list = [
             transforms.Resize(256),
             transforms.CenterCrop(crop_size),
+        ]
+    elif stage == 'raw':
+        t_list = [
+            transforms.ToTensor(),
+            normalize]
+        
+        p_list = [
+            # transforms.Resize(256),
+            MaskRandomResizedCrop(224,raw=False),
+            # transforms.CenterCrop(crop_size),
         ]
         
     transform = CustomCompose(t_list,p_list)
