@@ -19,6 +19,7 @@ class BYOLModel(torch.nn.Module):
         
         # predictor
         self.predictor = Predictor(config)
+        self.over_lap_mask = config['data'].get('over_lap_mask',True)
 
         self._initializes_target_network()
 
@@ -64,6 +65,8 @@ class BYOLModel(torch.nn.Module):
         assert im_size == 224
         idx = torch.LongTensor([1,0,3,2]).cuda()
         raw_encoding = self.target_network.encoder(raw_image) # B X 2048 X 7 X 7
+        intersection = masks.float()
+
         masks = self.masknet(raw_encoding) # raw_image: B X 3 X H X W, ->Mask B X 16 X H_mask X W_mask
         _,_,_,mask_dim = masks.shape
         rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
@@ -79,6 +82,11 @@ class BYOLModel(torch.nn.Module):
         aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w)
         aligned_1 = F.softmax(aligned_1,dim=-2)
         aligned_2 = F.softmax(aligned_2,dim=-2)
+        if self.over_lap_mask:
+            intersec_masks_1 = F.adaptive_avg_pool2d(intersection[:,0,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
+            intersec_masks_2 = F.adaptive_avg_pool2d(intersection[:,1,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
+            aligned_1 = aligned_1 * intersec_masks_1
+            aligned_2 = aligned_2 * intersec_masks_2
         mask_ids = None
         masks = torch.cat([aligned_1, aligned_2])
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks,mask_ids,mask_ids))

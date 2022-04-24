@@ -56,7 +56,7 @@ class MultiViewDataInjector():
             if area > 0:
                 intersect_masks[:,i_min:i_max,j_min:j_max] = 1
             #breakpoint()
-            mask = intersect_masks * mask
+            mask = intersect_masks #* mask
         #assert mask.sum() > 0
         assert len(self.transform_list) == 3
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1),do_flip1)

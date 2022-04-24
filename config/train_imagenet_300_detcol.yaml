@@ -27,7 +27,7 @@ data:
   train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
-  over_lap_mask: false
+  over_lap_mask: true
   #num_examples: 118287
   num_examples: 12000
 

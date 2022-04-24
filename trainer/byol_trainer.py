@@ -118,7 +118,7 @@ class BYOLTrainer():
         momentum = self.config['optimizer']['momentum']
         weight_decay = self.config['optimizer']['weight_decay']
         exclude_bias_and_bn = self.config['optimizer']['exclude_bias_and_bn']
-        params = params_util.collect_params([self.model.online_network, self.model.predictor],
+        params = params_util.collect_params([self.model.online_network, self.model.predictor,self.model.masknet],
                                             exclude_bias_and_bn=exclude_bias_and_bn)
         self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
 
@@ -197,7 +197,7 @@ class BYOLTrainer():
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
         weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
-        weights = torch.sqrt(weights)
+        weights = torch.pow(weights,2) # loss by area ** 2
         weights = weights.repeat([2,1])
         #preds = F.normalize(preds, dim=-1) 
         #targets = F.normalize(targets, dim=-1) 
