@@ -33,7 +33,7 @@ class BYOLModel(torch.nn.Module):
         for param_q, param_k in zip(self.online_network.parameters(), self.target_network.parameters()):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
-    def forward(self, view1, view2, mm, masks,raw_image,roi_t):
+    def _new_forward(self, view1, view2, mm, masks,raw_image,roi_t):
         # online network forward
         #import ipdb;ipdb.set_trace()
         #breakpoint()
@@ -45,16 +45,16 @@ class BYOLModel(torch.nn.Module):
         masks = self.masknet(raw_image) # raw_image: B X 3 X H X W, ->Mask B X 16 X H_mask X W_mask
         aligned_1 = ops.roi_align(masks,rois_1,7) # mask output is B X 16 X 7 X 7
         aligned_2 = ops.roi_align(masks,rois_2,7) # mask output is B X 16 X 7 X 7
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),torch.cat([aligned_1, aligned_2], dim=0),mask_ids,None))
+        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),torch.cat([aligned_1, aligned_2], dim=0),None,None))
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),torch.cat([aligned_2,aligned_1]).to('cuda'),mask_ids,None)
+            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),torch.cat([aligned_2,aligned_1]).to('cuda'),None,None)
             target_z = target_z.detach().clone()
 
         return q, target_z, pinds, tinds,masks
 
-    def _legacy_forward(self, view1, view2, mm, masks):
+    def forward(self, view1, view2, mm, masks,raw_image,roi_t):
         # online network forward
         #import ipdb;ipdb.set_trace()
         #breakpoint()
