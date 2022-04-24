@@ -194,7 +194,7 @@ class BYOLTrainer():
 
     def _forward_new_hel_loss(self, preds, targets,masks):
         #NOT WORKING
-        weights = masks.sum(dim=-1)
+        weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
         weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         weights = torch.sqrt(weights)
@@ -237,7 +237,8 @@ class BYOLTrainer():
     def _forward_masked_byol_loss(self, preds, targets,masks):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
-        weights = masks.sum(dim=-1)
+        #breakpoint()
+        weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
         weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         weights = torch.sqrt(weights)
@@ -257,7 +258,7 @@ class BYOLTrainer():
         #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
         inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
         if weights.sum() == 0:
-            inv_loss = 0
+            inv_loss = torch.FloatTensor(0)
         else:
             inv_loss = inv_loss.sum() / weights.sum()
         #Numerical stable approximation

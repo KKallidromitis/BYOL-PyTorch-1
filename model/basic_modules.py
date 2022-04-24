@@ -81,6 +81,66 @@ class SpatialAttentionMasknet(nn.Module):
         return x
 
 
+class FCNMaskNet(nn.Module):
+    '''
+      (decode_head): FCNHead(
+    input_transform=None, ignore_index=255, align_corners=False
+    (loss_decode): CrossEntropyLoss()
+    (conv_seg): Conv2d(256, 21, kernel_size=(1, 1), stride=(1, 1))
+    (dropout): Dropout2d(p=0.1, inplace=False)
+    (convs): Sequential(
+      (0): ConvModule(
+        (conv): Conv2d(2048, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False)
+        (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (activate): ReLU(inplace=True)
+      )
+      (1): ConvModule(
+        (conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False)
+        (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (activate): ReLU(inplace=True)
+      )
+    )
+    (conv_cat): ConvModule(
+      (conv): Conv2d(2304, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+      (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (activate): ReLU(inplace=True)
+    )
+  )
+    '''
+    def __init__(self,attention=False):
+        super().__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(2048, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
+            nn.SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True)
+        )
+        self.conv2 =  nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
+            nn.SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True)
+        )
+        self.convSeg = nn.Conv2d(256, 16, kernel_size=(1, 1), stride=(1, 1))
+        self.dropout = nn.Dropout2d(p=0.1, inplace=False)
+        #self.softmax = nn.Softmax2d()
+        self.attention = attention
+        if self.attention:
+            self.atten = SpatialAttentionBlock(256,64,256)
+            self.conv3 = nn.Conv2d(256, 256, 1)
+        
+    def forward(self, x):
+        #7x7x2048
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.dropout(x)
+        # 
+        if self.attention:
+            x = self.atten(x)+self.conv3(x)
+        x = self.convSeg(x)
+        #x = self.softmax(x)
+        #breakpoint()
+        # x = self.atten(x) +self.conv3(x)
+        # x = F.softmax(x,dim=1) # B X C X H X W
+        return x
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -101,10 +161,14 @@ class EncoderwithProjection(nn.Module):
         x = self.encoder(x) #(B, 2048, 7, 7)
         #breakpoint()
         # Detcon mask multiply
-        if mnet!= None:
-            masks = torch.reshape(mnet(x),(-1, 16, 49))
+        # if mnet!= None:
+        #     masks = torch.reshape(mnet(x),(-1, 16, 49))
+
+        ## Passed in mask, direct pooling
         bs, emb, emb_x, emb_y  = x.shape
         x = x.permute(0,2,3,1) # (B,7,7,2048)
+
+        #breakpoint()
         masks_area = masks.sum(axis=-1, keepdims=True)
         smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
         #smpl_masks = torch.ones((bs,1,49))
