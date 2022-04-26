@@ -14,7 +14,7 @@ class BYOLModel(torch.nn.Module):
         self.target_network = EncoderwithProjection(config)
         
         #mask net
-        self.masknet = Masknet()
+        self.masknet = Masknet(config)
         
         # predictor
         self.predictor = Predictor(config)

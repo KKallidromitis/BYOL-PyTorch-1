@@ -22,20 +22,27 @@ class MLP(nn.Module):
         return x
     
 class Masknet(nn.Module):
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
+        self.mask_rois = config['loss']['mask_rois']
         self.conv1 = nn.Conv2d(2048, 2048, 1)
         self.conv2 = nn.Conv2d(2048, 2048, 1)
-        self.conv3 = nn.Conv2d(2048, 16, 1)
-        self.norm = nn.BatchNorm2d(16, 16)
+        self.conv3 = nn.Conv2d(2048, self.mask_rois, 1)
+        self.softmax = nn.Softmax(dim=-1)
+        #self.norm = nn.BatchNorm2d(self.mask_rois, self.mask_rois)
 
-    def forward(self, x):
-        y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
+    def forward(self, x, masks):
+        #import ipdb;ipdb.set_trace()
+        x = self.conv3(F.relu(self.conv2(F.relu(self.conv1(x)))))
+        x = torch.reshape(x,(-1, self.mask_rois, 49))
+        y = x+masks
+        y = self.softmax(y)
         return y
 
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.mask_rois = config['loss']['mask_rois']
         # backbone
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
@@ -46,16 +53,15 @@ class EncoderwithProjection(nn.Module):
         input_dim = config['model']['projection']['input_dim']
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
+        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim,mask_roi=self.mask_rois)        
         
     def forward(self, x, masks, mnet=None):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
-        masks,mask_ids = sample_masks(masks)
+        masks,mask_ids = sample_masks(masks,self.mask_rois)
 
         if mnet!=None:
-            pertubation = torch.reshape(mnet(x.detach()),(-1, 16, 49))
-            masks = pertubation + masks.to('cuda')
+            masks = mnet(x,masks.to('cuda'))
         
         
         # Detcon mask multiply
@@ -72,12 +78,12 @@ class EncoderwithProjection(nn.Module):
 class Predictor(nn.Module):
     def __init__(self, config):
         super().__init__()
-
+        self.mask_rois = config['loss']['mask_rois']
         # predictor
         input_dim = config['model']['predictor']['input_dim']
         hidden_dim = config['model']['predictor']['hidden_dim']
         output_dim = config['model']['predictor']['output_dim']
-        self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+        self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim,mask_roi=self.mask_rois)
 
     def forward(self, x, mask_ids):
         return self.predictor(x), mask_ids

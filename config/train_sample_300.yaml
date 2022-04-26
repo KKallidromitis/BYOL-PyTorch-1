@@ -40,7 +40,7 @@ optimizer:
 
 loss: #src: 3.1
   temperature: 0.1
-  mask_rois: 16
+  mask_rois: 32
 
 checkpoint:
   time_stamp:
