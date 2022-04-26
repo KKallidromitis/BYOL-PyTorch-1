@@ -45,7 +45,7 @@ class BYOLModel(torch.nn.Module):
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks,None)
+            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks,self.masknet)
             target_z = target_z.detach().clone()
 
         return q, target_z, pinds, tinds
