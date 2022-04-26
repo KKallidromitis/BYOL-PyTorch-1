@@ -85,6 +85,8 @@ class BYOLTrainer():
 
         """log tools in the running phase"""
         self.steps = 0
+        self.wandb_id = self.config['log']['wandb_id']
+        self.epoch_count = -1
         self.log_step = self.config['log']['log_step']
         self.logging = logging_util.get_std_logging()
         if self.rank == 0:
@@ -94,13 +96,11 @@ class BYOLTrainer():
         """get data loader"""
         self.stage = self.config['stage']
         assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for BYOL training')
-        
         if self.config['data']['mask_type'] == 'coco':
             print("DEBUG: Using Coco GT Mask")
             self.data_ins = ImageLoadeCOCO(self.config)
         else:
             self.data_ins = ImageLoader(self.config)
-            
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
@@ -217,10 +217,18 @@ class BYOLTrainer():
             
             # measure data loading time
             data_time.update(time.time() - end)
-
+            
+            wandb_id = None
+            if self.gpu==0 and self.epoch_count<epoch:
+                if isinstance(self.wandb_id, int):
+                    wandb_id = int(self.wandb_id)
+                elif self.wandb_id=='random':
+                    wandb_id = torch.randint(0,self.train_batch_size,(1,1)).item()
+                self.epoch_count = epoch     
+                
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'))
+            q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'),wandb_id)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()

@@ -1,17 +1,17 @@
 # project related
 eval/output/
-#config/train_sample_300.yaml
 rand/
 .vscode/
 *.DS_Store
 ckpt/
 runs/
 wandb/
+logs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+imagenet/
 # C extensions
 *.so
 
@@ -111,3 +111,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+**.pth
+**.pth.tar
+launch.sh
