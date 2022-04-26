@@ -4,6 +4,7 @@ import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
+from utils.visualize_masks import wandb_sample
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -43,6 +44,7 @@ class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.mask_rois = config['loss']['mask_rois']
+        self.train_batch_size = config['data']['train_batch_size']
         # backbone
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
@@ -55,13 +57,23 @@ class EncoderwithProjection(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim,mask_roi=self.mask_rois)        
         
-    def forward(self, x, masks, mnet=None):
+    def forward(self, x, masks, mnet=None,wandb_id=None,net_type=None):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
         masks,mask_ids = sample_masks(masks,self.mask_rois)
 
-        if mnet!=None:
-            masks = mnet(x,masks.to('cuda'))
+        if wandb_id!=None:
+            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,7,7)).detach().cpu().numpy(),
+                         torch.reshape(masks[wandb_id+self.train_batch_size],(self.mask_rois,7,7)).detach().cpu().numpy(),
+                         'sample_masks_'+net_type)
+        
+        if mnet!= None:
+            masks = mnet(x.detach(),masks.to('cuda'))
+            
+        if wandb_id!=None:
+            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,7,7)).detach().cpu().numpy(),
+                 torch.reshape(masks[wandb_id+self.train_batch_size],(self.mask_rois,7,7)).detach().cpu().numpy(),
+                         'masknet_masks_'+net_type)
         
         
         # Detcon mask multiply

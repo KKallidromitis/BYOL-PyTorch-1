@@ -40,7 +40,7 @@ optimizer:
 
 loss: #src: 3.1
   temperature: 0.1
-  mask_rois: 32
+  mask_rois: 16
 
 checkpoint:
   time_stamp:
@@ -52,6 +52,7 @@ log:
   log_step: 10
   log_dir:
   log_all: False
+  wandb_id: 'random' # int or 'random' or False
 
 stage: "train"
 distributed: true

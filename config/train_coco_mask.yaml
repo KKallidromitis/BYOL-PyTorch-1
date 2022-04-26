@@ -52,7 +52,8 @@ log:
   log_step: 10
   log_dir:
   log_all: False
-
+  wandb_id: None
+  
 stage: "train"
 distributed: true
 seed: 0
