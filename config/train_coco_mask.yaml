@@ -45,7 +45,7 @@ loss:
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 10
+  save_epoch: 100
   ckpt_path: "ckpt/detconb_coco/{}/{}_{}_{}.pth.tar"
 
 log:
