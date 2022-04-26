@@ -38,10 +38,11 @@ optimizer:
   warmup_epochs: 3 # should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
-loss:
+loss: #src: 3.1
   temperature: 0.1
   mask_rois: 16
-
+  pool_size: 7 #7, 14, 28, 56
+  
 checkpoint:
   time_stamp:
   resume_path:
@@ -52,8 +53,8 @@ log:
   log_step: 10
   log_dir:
   log_all: False
-  wandb_id: None
-  
+  wandb_id: None # int or 'random' or None
+
 stage: "train"
 distributed: true
 seed: 0

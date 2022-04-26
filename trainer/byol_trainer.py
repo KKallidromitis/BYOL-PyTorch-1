@@ -221,7 +221,7 @@ class BYOLTrainer():
             wandb_id = None
             if self.gpu==0 and self.epoch_count<epoch:
                 if isinstance(self.wandb_id, int):
-                    wandb_id = self.wandb_id #torch.randint(0,self.train_batch_size,(1,1)).item()
+                    wandb_id = int(self.wandb_id)
                 elif self.wandb_id=='random':
                     wandb_id = torch.randint(0,self.train_batch_size,(1,1)).item()
                 self.epoch_count = epoch     

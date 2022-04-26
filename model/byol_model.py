@@ -7,6 +7,8 @@ from utils.visualize_masks import wandb_set
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.pool_size = config['loss']['pool_size']
+        self.train_batch_size = config['data']['train_batch_size']
         
         # online network
         self.online_network = EncoderwithProjection(config)
@@ -44,9 +46,9 @@ class BYOLModel(torch.nn.Module):
             wandb_set(view1[wandb_id].permute(1,2,0).detach().cpu().numpy(),
                       view2[wandb_id].permute(1,2,0).detach().cpu().numpy(),'views')
             wandb_set(masks[wandb_id].squeeze().detach().cpu().numpy(),
-                      masks[wandb_id+view1.shape[0]].squeeze().detach().cpu().numpy(),'fh_masks')
+                      masks[wandb_id+self.train_batch_size].squeeze().detach().cpu().numpy(),'fh_masks')
             
-        masks = convert_binary_mask(masks)
+        masks = convert_binary_mask(masks,pool_size = self.pool_size)
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks,self.masknet,wandb_id,'online'))
 
         # target network forward
