@@ -84,7 +84,7 @@ class ImageLoadeCOCO():
 
     def get_dataset(self, stage):
         #import ipdb;ipdb.set_trace()
-        image_dir = os.path.join(self.image_dir, f"{'train2017' if stage in ('train', 'ft') else 'val2017'}")
+        image_dir = os.path.join(self.image_dir,'images', f"{'train2017' if stage in ('train', 'ft') else 'val2017'}")
         #mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
         
         transform1 = get_transform(stage)

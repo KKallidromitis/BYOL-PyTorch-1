@@ -23,8 +23,8 @@ data:
   mask_type: "coco"
   resize_size: 224
   data_workers: 16
-  train_batch_size: 4
-  val_batch_size: 4
+  train_batch_size: 128
+  val_batch_size: 32
   dual_views: true
   num_examples: 118287 #1281167
 
@@ -46,7 +46,7 @@ checkpoint:
   time_stamp:
   resume_path:
   save_epoch: 10
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
+  ckpt_path: "ckpt/detconb_coco/{}/{}_{}_{}.pth.tar"
 
 log:
   log_step: 10
