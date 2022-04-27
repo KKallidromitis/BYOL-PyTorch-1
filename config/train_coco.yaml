@@ -3,8 +3,8 @@ model:
   backbone:
     type: "resnet50"
     pretrained: false
-  projection:
-    type: "MLP"
+  projection:   # src: A.2 of detcon paper
+    type: "MLP" 
     input_dim: 2048
     hidden_dim: 4096
     output_dim: 256
@@ -13,6 +13,7 @@ model:
     input_dim: 256
     hidden_dim: 4096
     output_dim: 256
+  memory_size: 2048
 
 amp:
   sync_bn: True
@@ -36,25 +37,7 @@ optimizer:
   weight_decay: 1.0e-6
   total_epochs: 300
   warmup_epochs: 3 # should be 1/100 of total epoches
-  exclude_bias_and_bn: true
-
-loss: #src: 3.1
-  temperature: 0.1
-  mask_rois: 16
-  pool_size: 7 #7, 14, 28, 56
-  
-checkpoint:
-  time_stamp:
-  resume_path:
-  save_epoch: 100
-  ckpt_path: "ckpt/master_coco/{}/{}_{}_{}.pth.tar"
-
-log:
-  log_step: 10
-  log_dir:
-  log_all: False
-  wandb_id: None # int or 'random' or None
 
 stage: "train"
-distributed: true
 seed: 0
+distributed: True

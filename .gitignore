@@ -1,6 +1,16 @@
 # project related
 eval/output/
+<<<<<<< HEAD
 rand/
+=======
+config/train_sample_300.yaml
+rand/
+.vscode/
+*.DS_Store
+ckpt/
+runs/
+wandb/
+>>>>>>> d2b18630d270a17cea5dcac71c6aa586d3be836a
 .vscode/
 *.DS_Store
 ckpt/

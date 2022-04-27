@@ -1,4 +1,5 @@
 #-*- coding:utf-8 -*-
+# Nearest neighbor code from https://github.com/vturrisi/solo-learn/blob/main/solo/methods/nnbyol.py
 import torch
 from .basic_modules import EncoderwithProjection, Predictor, Masknet
 from utils.mask_utils import convert_binary_mask
@@ -23,6 +24,17 @@ class BYOLModel(torch.nn.Module):
         self.predictor = Predictor(config)
 
         self._initializes_target_network()
+
+        self.queue_size = config['model']['memory_size']
+        print(f"Using Nearest Neighbors with Queue size {self.queue_size}")
+        # setup queue (For Storing Random Targets)
+        self.register_buffer('queue', torch.randn(self.queue_size, config['model']['projection']['output_dim']))
+        # normalize the queue embeddings
+        self.queue = torch.nn.functional.normalize(self.queue, dim=1)
+        # setup the queue pointer
+        self.register_buffer('queue_ptr', torch.zeros(1, dtype=torch.long))
+        # Setup queue for nearest neighbor class comparision
+        self.register_buffer("queue_y", -torch.ones(self.queue_size, dtype=torch.long))
 
     @torch.no_grad()
     def _initializes_target_network(self):

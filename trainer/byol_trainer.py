@@ -2,7 +2,7 @@
 import os
 import time
 import datetime
-
+import os
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -34,6 +34,12 @@ class BYOLTrainer():
         self.gpu = self.config['local_rank']
         self.distributed = self.config['distributed']
 
+        """ Supress printing """
+        if self.distributed and self.rank != 0:
+            def print_pass(*args):
+                pass
+            builtins.print = print_pass
+
         """get the train parameters!"""
         self.total_epochs = self.config['optimizer']['total_epochs']
         self.warmup_epochs = self.config['optimizer']['warmup_epochs']
@@ -62,7 +68,7 @@ class BYOLTrainer():
         else:
             self.device = torch.device('cpu')
         self.construct_model()
-
+        
         """save checkpoint path"""
         self.time_stamp = self.config['checkpoint']['time_stamp']
         if self.time_stamp == None:
@@ -82,7 +88,6 @@ class BYOLTrainer():
             os.makedirs(save_dir)
         except:
             pass
-
         """log tools in the running phase"""
         self.steps = 0
         self.wandb_id = self.config['log']['wandb_id']
@@ -196,6 +201,7 @@ class BYOLTrainer():
         backward_time = eval_util.AverageMeter()
         log_time = eval_util.AverageMeter()
         loss_meter = eval_util.AverageMeter()
+        nn_acc_meter = eval_util.AverageMeter()
 
         self.model.train()
 
@@ -230,7 +236,8 @@ class BYOLTrainer():
             tflag = time.time()
             q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'),wandb_id)
             forward_time.update(time.time() - tflag)
-
+            
+            # Compute loss
             tflag = time.time()
             loss = self.forward_loss(target_z, q, tinds.to('cuda'), pinds.to('cuda'))
 
@@ -243,12 +250,20 @@ class BYOLTrainer():
             self.optimizer.step()
             backward_time.update(time.time() - tflag)
             loss_meter.update(loss.item(), view1.size(0))
+            nn_acc_meter.update((labels == nn1_label).sum().item() / labels.size(0), labels.size(0))
+
+            # Update queue
+            if self.distributed:
+                self.model.module.dequeue_and_enqueue(target_z1, labels)
+            else:
+                self.model.dequeue_and_enqueue(target_z1, labels)
 
             tflag = time.time()
             if self.steps % self.log_step == 0 and self.rank == 0:
                 self.writer.add_scalar('lr', round(self.optimizer.param_groups[0]['lr'], 5), self.steps)
                 self.writer.add_scalar('mm', round(self.mm, 5), self.steps)
                 self.writer.add_scalar('loss', loss_meter.val, self.steps)
+                self.writer.add_scalar('nn_acc', nn_acc_meter.val, self.steps)
             log_time.update(time.time() - tflag)
 
             batch_time.update(time.time() - end)
@@ -273,6 +288,7 @@ class BYOLTrainer():
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'
                         f'mm {round(self.mm, 5)}\t'
                         f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
+                        f'Nearest-Neighbor Acc {nn_acc_meter.val:.4f} ({nn_acc_meter.avg:.4f})\t'
                         f'Batch Time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                         f'Data Time {data_time.val:.4f} ({data_time.avg:.4f})\t'
                         f'Forward Time {forward_time.val:.4f} ({forward_time.avg:.4f})\t'
