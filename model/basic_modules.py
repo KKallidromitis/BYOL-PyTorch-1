@@ -107,40 +107,54 @@ class FCNMaskNet(nn.Module):
     )
   )
     '''
-    def __init__(self,attention=False):
+    def __init__(self,attention=False,upsample=56):
         super().__init__()
         self.conv1 = nn.Sequential(
             nn.Conv2d(2048, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
-            nn.SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
             nn.ReLU(inplace=True)
         )
         self.conv2 =  nn.Sequential(
             nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
-            nn.SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
             nn.ReLU(inplace=True)
         )
         self.convSeg = nn.Conv2d(256, 16, kernel_size=(1, 1), stride=(1, 1))
         self.dropout = nn.Dropout2d(p=0.1, inplace=False)
         #self.softmax = nn.Softmax2d()
+        self.finalbn = nn.BatchNorm2d(16, eps=1e-05, momentum=0.1, affine=False, track_running_stats=True)
         self.attention = attention
         if self.attention:
             self.atten = SpatialAttentionBlock(256,64,256)
-            self.conv3 = nn.Conv2d(256, 256, 1)
+            self.conv3 = nn.Conv2d(256, 256, 1, bias=False)
+            
+        self.upsample = upsample
         
     def forward(self, x):
         #7x7x2048
+        #TODO: RESAMPLE ATTENTION
+        upsample = self.upsample
+        if self.attention:
+            x_norm = F.interpolate(x, (upsample,upsample), mode='bilinear',align_corners=False)
+            x_norm = F.normalize(x,dim=1)
+            atten =torch.einsum('bcxy,bcij->bxyij',x_norm,x_norm) #B X H X W X H X W
         x = self.conv1(x)
+        x = F.interpolate(x, (upsample,upsample), mode='bilinear',align_corners=False)
         x = self.conv2(x)
         x = self.dropout(x)
         # 
         if self.attention:
-            x = self.atten(x)+self.conv3(x)
+            #x = self.atten(x)+self.conv3(x)
+            x = torch.einsum('bxyij,bdij->bxyd',atten,x) +self.conv3(x)# B X( H X W) X d_emb, # Similar matrice will have simlar embeding
         x = self.convSeg(x)
+        x = self.finalbn(x)
         #x = self.softmax(x)
         #breakpoint()
         # x = self.atten(x) +self.conv3(x)
         # x = F.softmax(x,dim=1) # B X C X H X W
         return x
+
+
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -193,3 +207,80 @@ class Predictor(nn.Module):
 
     def forward(self, x, mask_ids):
         return self.predictor(x), mask_ids
+
+
+class FCNMaskNetV2(nn.Module):
+    '''
+      (decode_head): FCNHead(
+    input_transform=None, ignore_index=255, align_corners=False
+    (loss_decode): CrossEntropyLoss()
+    (conv_seg): Conv2d(256, 21, kernel_size=(1, 1), stride=(1, 1))
+    (dropout): Dropout2d(p=0.1, inplace=False)
+    (convs): Sequential(
+      (0): ConvModule(
+        (conv): Conv2d(2048, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False)
+        (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (activate): ReLU(inplace=True)
+      )
+      (1): ConvModule(
+        (conv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False)
+        (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+        (activate): ReLU(inplace=True)
+      )
+    )
+    (conv_cat): ConvModule(
+      (conv): Conv2d(2304, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+      (bn): SyncBatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      (activate): ReLU(inplace=True)
+    )
+  )
+    '''
+    def __init__(self,attention=False,upsample=14):
+        super().__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(1024, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
+            nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True)
+        )
+        self.conv2 =  nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(6, 6), dilation=(6, 6), bias=False),
+            nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            nn.ReLU(inplace=True)
+        )
+        self.convSeg = nn.Conv2d(256, 32, kernel_size=(1, 1), stride=(1, 1))
+        self.dropout = nn.Dropout2d(p=0.1, inplace=False)
+        #self.softmax = nn.Softmax2d()
+        self.finalbn = nn.BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=False, track_running_stats=True)
+        self.attention = attention
+        if self.attention:
+            self.atten = SpatialAttentionBlock(256,64,256)
+            self.conv3 = nn.Conv2d(256, 256, 1, bias=False)
+            
+        self.upsample = upsample
+        
+    def forward(self, x):
+        #7x7x2048
+        #TODO: RESAMPLE ATTENTION
+        upsample = self.upsample
+        if self.attention:
+            x_norm = F.interpolate(x, (upsample,upsample), mode='bilinear',align_corners=False)
+            x_norm = F.normalize(x_norm,dim=1)
+            atten =torch.einsum('bcxy,bcij->bxyij',x_norm,x_norm) #B X H X W X H X W
+        x = self.conv1(x)
+        x = F.interpolate(x, (upsample,upsample), mode='bilinear',align_corners=False)
+        x = self.conv2(x)
+        x = self.dropout(x)
+        # 
+        if self.attention:
+            #x = self.atten(x)+self.conv3(x)
+            #print(x.shape,atten.shape,self.conv3(x).shape)
+            x = torch.einsum('bxyij,bdij->bxyd',atten,x).permute(0,3,1,2) #+self.conv3(x)# B X( H X W) X d_emb, # Similar matrice will have simlar embeding
+        x = self.finalbn(x)
+        x = self.convSeg(x)
+        #x = self.finalbn(x)
+        
+        #x = self.softmax(x)
+        #breakpoint()
+        # x = self.atten(x) +self.conv3(x)
+        # x = F.softmax(x,dim=1) # B X C X H X W
+        return x

@@ -11,6 +11,7 @@ from torchvision import ops
 from torchvision.datasets.folder import default_loader,make_dataset,IMG_EXTENSIONS
 from pycocotools.coco import COCO
 import os
+from skimage.segmentation import slic
 
 def get_differentialble_transform(i,j,h,w,flip,crop_size):
         def g(x): # differentiable transform
@@ -21,12 +22,20 @@ def get_differentialble_transform(i,j,h,w,flip,crop_size):
             return x
         return g
 
+def to_slic(img,**kwargs):
+    img = img.permute(1, 2, 0)
+    h, w, c = img.size()
+    seg = slic(img.to(torch.double).numpy(), start_label=0, **kwargs)
+    seg = torch.from_numpy(seg)
+    return seg.view(1, h, w)
+
 class MultiViewDataInjector():
     def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224):
         self.transform_list = transform_list
         self.over_lap_mask = over_lap_mask
         self.crop_size = crop_size
         self.p = flip_p
+        self.slic = True
 
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
@@ -56,12 +65,20 @@ class MultiViewDataInjector():
             if area > 0:
                 intersect_masks[:,i_min:i_max,j_min:j_max] = 1
             #breakpoint()
-            mask = intersect_masks #* mask
+            mask = intersect_masks * mask
+        #print(mask.shape)
         #assert mask.sum() > 0
         assert len(self.transform_list) == 3
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1),do_flip1)
         output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2),do_flip2)
         output2,mask2 = self.transform_list[2](sample,mask,(0, 0, hh, ww),False)
+        mask0 = torch.cat([mask0,torch.ones_like(mask0[:1])])
+        mask1 = torch.cat([mask1,torch.ones_like(mask1[:1])])
+        if self.slic:
+            super_pixel_id_map = to_slic(output2,n_segments=100) # SLIC GROUPING to 100 superpixels 1X H X W
+            mask2 = torch.cat([mask2,super_pixel_id_map])
+        else:
+            mask2 = torch.cat([mask2,torch.ones_like(mask2[:1])])
         output_cat = torch.stack([output0,output1,output2], dim=0)
         #Hard code pipeline for generate mask for encoder
         transform1 = [i1,j1,i1+h1,j1+w1,do_flip1]
@@ -116,13 +133,14 @@ class SSLMaskDataset(VisionDataset):
         return len(self.samples)
 
 class COCOMaskDataset(VisionDataset):
-    def __init__(self, root: str,annFile: str, transform = None):
+    def __init__(self, root: str,annFile: str, transform = None,mask_mode='class'):
         self.root = root
         self.coco = COCO(annFile)
         self.transform = transform
         #self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
         self.loader = default_loader
         ids = []
+        self.mask_mode = mask_mode
         # perform filter 
         for k in self.coco.imgs.keys():
             anns = self.coco.loadAnns(self.coco.getAnnIds(k))
@@ -142,18 +160,23 @@ class COCOMaskDataset(VisionDataset):
         # Load Image
         sample = self.loader(path)
         anns = self.coco.loadAnns(self.coco.getAnnIds(id))
-        mask = np.max(np.stack([self.coco.annToMask(ann) * (idx + 1)
+        if self.mask_mode=='instance':
+            mask = np.max(np.stack([self.coco.annToMask(ann) * (idx + 1)
                                                  for idx,ann in enumerate(anns)]), axis=0) #instance
+        else:
+            assert self.mask_mode=='class'
+            mask = np.max(np.stack([self.coco.annToMask(ann) * ann["category_id"] 
+                                                 for idx,ann in enumerate(anns)]), axis=0) #instance
+             
+
         # idx==0 is background
         # print(np.unique(mask))
         # return sample,mask
         # Apply transforms
         mask = torch.LongTensor(mask)
         if self.transform is not None:
-            sample,mask = self.transform(sample,mask.unsqueeze(0))
-        #breakpoint()
-        return sample,mask
-
+            sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0))
+        return sample,mask,diff_transfrom
     def __len__(self) -> int:
         return len(self.ids)
 

@@ -1,5 +1,6 @@
 model:
   base_momentum: 0.99
+  masknet: false
   backbone:
     type: "resnet50"
     pretrained: false
@@ -23,10 +24,11 @@ data:
   mask_type: "coco"
   resize_size: 224
   data_workers: 16
-  train_batch_size: 4
+  train_batch_size: 32
   val_batch_size: 4
   dual_views: true
-  num_examples: 118287 #1281167
+  over_lap_mask: true
+  num_examples: 117266 #1281167
 
 optimizer:
   type: lars
@@ -34,7 +36,7 @@ optimizer:
   lr_type: "piecewise"
   momentum: 0.9
   weight_decay: 1.0e-6
-  total_epochs: 300
+  total_epochs: 32
   warmup_epochs: 3 # should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
@@ -45,7 +47,7 @@ loss:
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 10
+  save_epoch: 8
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:

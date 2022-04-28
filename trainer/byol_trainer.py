@@ -21,7 +21,11 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
+from utils.mask_utils import to_binary_mask
 from utils.math import xlogx
+from utils.visualize import wandb_dump_img
+from utils.kmeans.kmeans import KMeans
+
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
@@ -74,7 +78,7 @@ class BYOLTrainer():
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         self.log_all = self.config['log']['log_all']
-        
+        self.cross_entrophy_loss = torch.nn.CrossEntropyLoss()
         if self.gpu==0 or self.log_all:
             wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
         
@@ -102,6 +106,7 @@ class BYOLTrainer():
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
+        self.masknet_on = self.config['model']['masknet']
         self.opt_level = self.config['amp']['opt_level']
         print(f"sync_bn: {self.sync_bn}")
 
@@ -118,8 +123,10 @@ class BYOLTrainer():
         momentum = self.config['optimizer']['momentum']
         weight_decay = self.config['optimizer']['weight_decay']
         exclude_bias_and_bn = self.config['optimizer']['exclude_bias_and_bn']
-        params = params_util.collect_params([self.model.online_network, self.model.predictor,self.model.masknet],
-                                            exclude_bias_and_bn=exclude_bias_and_bn)
+        parms = [self.model.online_network, self.model.predictor]
+        if self.config['model']['masknet']:
+            parms.append(self.model.masknet)
+        params = params_util.collect_params(parms,exclude_bias_and_bn=exclude_bias_and_bn)
         self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
 
         """init amp"""
@@ -129,6 +136,8 @@ class BYOLTrainer():
 
         if self.distributed:
             self.model = DDP(self.model, delay_allreduce=True)
+        #cosine_sim = lambda x,y: torch.einsum('nd,md->nm',x,y)
+        self.kmeans = KMeans(5)
         print("amp init end!")
 
     # resume snapshots from pre-train
@@ -187,10 +196,10 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks):
+    def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
-        return self._forward_masked_byol_loss(preds, targets,masks)
+        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
 
     def _forward_new_hel_loss(self, preds, targets,masks):
         #NOT WORKING
@@ -234,17 +243,23 @@ class BYOLTrainer():
         #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
         return loss,eh_obj,eh_dist,inv_loss
     
-    def _forward_masked_byol_loss(self, preds, targets,masks):
+    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         #breakpoint()
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
         weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
-        weights = torch.sqrt(weights)
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
+        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
+        if weights.sum() == 0:
+            inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
+        else:
+            inv_loss = inv_loss.sum() / weights.sum()
+
+
         bz,ch,emb = preds.shape
         #breakpoint()
         #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
@@ -256,11 +271,6 @@ class BYOLTrainer():
         #breakpoint()
         eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
         #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
-        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
-        if weights.sum() == 0:
-            inv_loss = torch.FloatTensor(0)
-        else:
-            inv_loss = inv_loss.sum() / weights.sum()
         #Numerical stable approximation
         #r = p.mean(dim=(0,1)) #  emb 
         #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
@@ -268,7 +278,27 @@ class BYOLTrainer():
         eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
         #log_r =  F.log_softmax(r_r,dim=-1) # emb
         #eh_dist = -(xlogx(r)).sum()/ n_f
-        loss = inv_loss # standard BYOL
+        alpha = 0.5
+        
+        if not self.masknet_on:
+            loss = inv_loss
+            return  loss,eh_obj,eh_dist,inv_loss,torch.tensor(0.0)
+        #mask_loss = self.cross_entrophy_loss(raw_mask,mask_target)
+        _,_,mh,mw = raw_mask.shape # B X C X H X W
+        raw_mask_norm = raw_mask.contiguous() #already normalized
+        n_target = torch.max(mask_target).item()+1
+        mask_target = to_binary_mask(mask_target,n_target,resize_to=(14,14)).contiguous()  # B XC X H X W
+        cosine_sim = torch.einsum('bcxy,bcij->bxyij',raw_mask_norm,raw_mask_norm) # B X H X W, or attention
+        same_object = torch.einsum('bcxy,bcij->bxyij',mask_target,mask_target) # B X H X W X I X J, or attention
+        tau = 0.1
+        logits = cosine_sim / tau 
+        logits = logits.view(-1,mh*mw,mh*mw)
+        same_object = same_object.view(-1,mh*mw,mh*mw)
+        same_object = F.normalize(same_object,dim=-1,p=1)
+        #mask_loss = self.cross_entrophy_loss(logits.detach().cpu(),same_object.detach().cpu())
+        mask_loss = -torch.sum(same_object * torch.nn.functional.log_softmax(logits,dim = -1), dim=-1).mean()
+        mask_target
+        loss = inv_loss + alpha * mask_loss# standard BYOL
         # alpha  = 0
         # beta = 100
         # theta = 1000
@@ -276,7 +306,7 @@ class BYOLTrainer():
         # loss /= (alpha+beta+theta)
         #breakpoint()
         #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
-        return loss,eh_obj,eh_dist,inv_loss
+        return loss,eh_obj,eh_dist,inv_loss,mask_loss
  
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -293,7 +323,6 @@ class BYOLTrainer():
 
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
-        #breakpoint()
         i = 0
         #breakpoint()
         while images is not None:
@@ -306,17 +335,20 @@ class BYOLTrainer():
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
             view_raw = images[:, 2, ...].contiguous()
-            masks = masks[:,:2,...].contiguous() # discard last mask
+            # mask B X (3 Views) X (2 channels [intersection, SLIC]  ) X H X W
+            input_masks = masks[:,:2,0,...].contiguous() # discard last mask,B X 2 X 224 X 224
+            slic_labelmap = masks[:,2,1,...].contiguous() # B X 1 X H X W
             # measure data loading time
             data_time.update(time.time() - end)
-
+            #breakpoint()
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds,down_sampled_masks = self.model(view1, view2, self.mm, masks,view_raw,diff_transfrom)
+            #breakpoint()
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss = self.forward_loss(q,target_z,down_sampled_masks)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -349,12 +381,22 @@ class BYOLTrainer():
                     "eh_obj":round(eh_obj.item(),5),
                     "eh_dist":round(eh_dist.item(),5),
                     "inv_loss":round(inv_loss.item(),5),
+                    "mask_loss":round(mask_loss.item(),5),
+                    "num_segs":round(num_segs.item(),5),
                     'Batch Time': round(batch_time.val, 5),
                     'Data Time': round(data_time.val, 5),
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
-
+                if  (self.steps//self.log_step) % 10 == 1:
+                    img_mask = mask_target[0].detach().cpu()
+                    view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
+                    mask_visual = raw_mask[0].permute(1,2,0) 
+                    mh,mw,mc = mask_visual.shape
+                    mask_visual = mask_visual.view(mh*mw,mc)
+                    mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
+                    wandb_dump_img([view_raw,img_mask,mask_visual],"Masks")
+                    #breakpoint()
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'

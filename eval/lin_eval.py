@@ -35,7 +35,7 @@ class ResNet(torch.nn.Module):
     
 device = torch.device('cuda:0')
 model = ResNet('resnet50', pretrained=False, use_fc=False).to(device)
-model_path = '/home/jacklishufan/detconb/ckpt/detconb/04_22_16-47/04_22_16-47_resnet50_300.pth.tar'
+model_path = '/home/jacklishufan/detconb/ckpt/detconb/04_24_17-51/04_24_17-51_resnet50_300.pth.tar'
 pth_file = torch.load(model_path, map_location=device)
 checkpoint = torch.load(model_path, map_location=device)['model']#['online_backbone']
 state_dict = {}
