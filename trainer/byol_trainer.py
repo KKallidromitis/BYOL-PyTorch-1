@@ -16,10 +16,11 @@ from apex import amp
 
 from model import BYOLModel
 from optimizer import LARS
-from data import ImageLoader,ImageLoadeCOCO
+from data import ImageNetLoader#, ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from losses import DetconInfoNCECriterion
+import builtins
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -103,9 +104,10 @@ class BYOLTrainer():
         assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for BYOL training')
         if self.config['data']['mask_type'] == 'coco':
             print("DEBUG: Using Coco GT Mask")
-            self.data_ins = ImageLoadeCOCO(self.config)
+            raise NotImplementedError("Please use Image Laoder with Mask (uncomment line 19 in trainer/byol_trainer.py")
+            #self.data_ins = ImageLoadeCOCO(self.config)
         else:
-            self.data_ins = ImageLoader(self.config)
+            self.data_ins = ImageNetLoader(self.config) #FIXME: USING IMAGENET!!! #ImageLoader(self.config)
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
@@ -201,7 +203,6 @@ class BYOLTrainer():
         backward_time = eval_util.AverageMeter()
         log_time = eval_util.AverageMeter()
         loss_meter = eval_util.AverageMeter()
-        nn_acc_meter = eval_util.AverageMeter()
 
         self.model.train()
 
@@ -209,7 +210,7 @@ class BYOLTrainer():
         self.data_ins.set_epoch(epoch)
 
         prefetcher = data_prefetcher(self.train_loader)
-        images, masks = prefetcher.next()
+        images, transform_param = prefetcher.next()
         i = 0
         while images is not None:
             i += 1
@@ -220,6 +221,7 @@ class BYOLTrainer():
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
+            view0 = images[:, 2, ...].contiguous()
             
             # measure data loading time
             data_time.update(time.time() - end)
@@ -234,7 +236,7 @@ class BYOLTrainer():
                 
             # forward
             tflag = time.time()
-            q, target_z,pinds, tinds = self.model(view1, view2, self.mm, masks.to('cuda'),wandb_id)
+            q, target_z, pinds, tinds, masks = self.model(view0, view1, view2, self.mm, wandb_id, transform_param)
             forward_time.update(time.time() - tflag)
             
             # Compute loss
@@ -250,20 +252,12 @@ class BYOLTrainer():
             self.optimizer.step()
             backward_time.update(time.time() - tflag)
             loss_meter.update(loss.item(), view1.size(0))
-            nn_acc_meter.update((labels == nn1_label).sum().item() / labels.size(0), labels.size(0))
-
-            # Update queue
-            if self.distributed:
-                self.model.module.dequeue_and_enqueue(target_z1, labels)
-            else:
-                self.model.dequeue_and_enqueue(target_z1, labels)
 
             tflag = time.time()
             if self.steps % self.log_step == 0 and self.rank == 0:
                 self.writer.add_scalar('lr', round(self.optimizer.param_groups[0]['lr'], 5), self.steps)
                 self.writer.add_scalar('mm', round(self.mm, 5), self.steps)
                 self.writer.add_scalar('loss', loss_meter.val, self.steps)
-                self.writer.add_scalar('nn_acc', nn_acc_meter.val, self.steps)
             log_time.update(time.time() - tflag)
 
             batch_time.update(time.time() - end)
@@ -271,7 +265,9 @@ class BYOLTrainer():
             #import ipdb;ipdb.set_trace()
             # Print log info
             if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
-                
+
+                # TODO: ADD MASK VIZ!
+
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
                 wandb.log({
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
@@ -288,14 +284,13 @@ class BYOLTrainer():
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'
                         f'mm {round(self.mm, 5)}\t'
                         f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'
-                        f'Nearest-Neighbor Acc {nn_acc_meter.val:.4f} ({nn_acc_meter.avg:.4f})\t'
                         f'Batch Time {batch_time.val:.4f} ({batch_time.avg:.4f})\t'
                         f'Data Time {data_time.val:.4f} ({data_time.avg:.4f})\t'
                         f'Forward Time {forward_time.val:.4f} ({forward_time.avg:.4f})\t'
                         f'Backward Time {backward_time.val:.4f} ({backward_time.avg:.4f})\t'
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
-            images, masks = prefetcher.next()
+            images, transform_param = prefetcher.next()
         if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
             wandb.log({

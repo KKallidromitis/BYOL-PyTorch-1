@@ -19,14 +19,16 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/kkallidromitis/data/sample/" #TODO: Change to match Japan Cluster
+  image_dir: "/home/akash/ilsvrc_1p" #TODO: Change to match Japan Cluster
   mask_type: "fh"
   resize_size: 224 # src: 3.1
+  view0_size: 224
   data_workers: 16
-  train_batch_size: 128 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 1 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   num_examples: 12811
+  overlap_mask: False
 
 optimizer:
   type: lars
@@ -56,5 +58,5 @@ log:
   wandb_id: None # int or 'random' or None
 
 stage: "train"
-distributed: true
+distributed: True
 seed: 0
