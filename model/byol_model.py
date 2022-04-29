@@ -1,17 +1,20 @@
 #-*- coding:utf-8 -*-
 from operator import imod
+from jax import mask
 import torch
 from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
 from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool
 from torchvision import ops
 import torch.nn.functional as F
 from torchvision.models._utils import IntermediateLayerGetter
-#from sklearn.cluster import KMeans,MiniBatchKMeans
+from sklearn.cluster import AgglomerativeClustering
 from utils.kmeans.minibatchkmeans import MiniBatchKMeans
 from utils.kmeans.kmeans import KMeans
 from utils.kmeans.dataset import KMeansDataset
 from utils.distributed_utils import gather_from_all
 from torch.utils.data import DataLoader
+import numpy as np
+
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -38,6 +41,8 @@ class BYOLModel(torch.nn.Module):
         self.kmeans = KMeans(self.n_kmeans,)
         self.kmeans_gather = False
         self.rank = config['rank']
+        self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
+        self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
 
     @torch.no_grad()
     def _initializes_target_network(self):
@@ -80,8 +85,24 @@ class BYOLModel(torch.nn.Module):
         out = torch.where(flip==1,flipped,aligned_mask)
         return out
 
+    def get_label_map(self,masks):
+        #
+        b,c,h,w = masks.shape
+        batch_data = masks.permute(0,2,3,1).reshape(b,h*w,32).detach().cpu()
+        labels = []
+        for data in batch_data:
+            agg = self.agg.fit(data)
+            if np.max(agg.labels_)>15:
+                agg = self.agg_backup.fit(data)
+            label = agg.labels_.reshape(h,w)
+            labels.append(label)
+        labels = np.stack(labels)
+        labels = torch.LongTensor(labels).cuda()
+        return labels
+        
+        
 
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask):
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False):
         # online network forward
         #import ipdb;ipdb.set_trace()
         #breakpoint()
@@ -124,10 +145,14 @@ class BYOLModel(torch.nn.Module):
                 labels = labels.view(b,-1)
                 #breakpoint()
                 #breakpoint()
-                converted_idx = torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
-                converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
+                #converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
                 raw_masks = F.normalize(masks,dim=1)
-                raw_mask_target = converted_idx
+                raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
+                if user_masknet:
+                    converted_idx = self.get_label_map(raw_masks)
+                else:
+                    converted_idx = raw_mask_target
+                converted_idx_b = to_binary_mask(converted_idx,16)
                 #breakpoint()
                 mask_dim = 56
             else:
@@ -183,7 +208,9 @@ class BYOLModel(torch.nn.Module):
             masks_inv = torch.cat([masks_b, masks_a])
             num_segs = torch.FloatTensor([x.unique().shape[0] for x in mask_ids]).mean()
             raw_masks = None
-            raw_mask_target = None
+            raw_mask_target = None #B X H X W (input mask)
+            converted_idx = None
+
 
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids))
         # target network forward
@@ -193,7 +220,7 @@ class BYOLModel(torch.nn.Module):
             target_z = target_z.detach().clone()
         
 
-        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs
+        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
 
     def _legacy_forward(self, view1, view2, mm, masks):
         # online network forward

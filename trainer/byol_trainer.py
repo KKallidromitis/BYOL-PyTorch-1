@@ -324,6 +324,7 @@ class BYOLTrainer():
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
+        use_masknet = epoch > 30
         #breakpoint()
         while images is not None:
             i += 1
@@ -344,7 +345,7 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap)
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
@@ -388,14 +389,16 @@ class BYOLTrainer():
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
-                if  (self.steps//self.log_step) % 10 == 1:
+                if  (self.steps//self.log_step) % 5 == 1:
                     img_mask = mask_target[0].detach().cpu()
+                    applied_mask = applied_mask[0].detach().cpu()
+
                     view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     mask_visual = raw_mask[0].permute(1,2,0) 
                     mh,mw,mc = mask_visual.shape
                     mask_visual = mask_visual.view(mh*mw,mc)
                     mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    wandb_dump_img([view_raw,img_mask,mask_visual],"Masks")
+                    wandb_dump_img([view_raw,img_mask,mask_visual,applied_mask],"Masks")
                     #breakpoint()
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
