@@ -18,7 +18,7 @@ from optimizer import LARS
 from data import ImageNetLoader
 from utils import params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-
+from utils.visualize import wandb_dump_img
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -202,7 +202,12 @@ class BYOLTrainer():
 
             # forward
             tflag = time.time()
-            q, target_z = self.model(view1, view2, self.mm)
+            q, target_z,atten_ab,atten_ba = self.model(view1, view2, self.mm)
+            
+            if self.gpu == 0 and i==1:
+                wandb_dump_img([np.exp(view1[0].cpu().detach().permute(1,2,0)),np.exp(view2[0].cpu().detach().permute(1,2,0)),
+                atten_ab[0].cpu().detach(),atten_ba[0].cpu().detach()],'Alignment')
+            
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
