@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
+import torch.nn.functional as F
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -53,5 +54,13 @@ class Predictor(nn.Module):
         output_dim = config['model']['predictor']['output_dim']
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x):
-        return self.predictor(x)
+
+def cosine_attention(pixels,ref_vec):
+    '''
+    ref_vec: B X dim_emb
+    pixels: B X dim_emb X H X W X 
+    '''
+    ref_vec = F.normalize(ref_vec,dim=-1)
+    pixels = F.normalize(pixels,dim=-1)
+    atten = torch.einsum('bcxy,bc->bxy',pixels,ref_vec)
+    return atten
