@@ -1,5 +1,7 @@
 #-*- coding:utf-8 -*-
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from .basic_modules import EncoderwithProjection, Predictor
 
 class BYOLModel(torch.nn.Module):
@@ -14,6 +16,10 @@ class BYOLModel(torch.nn.Module):
 
         # predictor
         self.predictor = Predictor(config)
+
+        # Misc fn
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.softmax2d = nn.Softmax2d()
 
         self._initializes_target_network()
 
@@ -30,39 +36,49 @@ class BYOLModel(torch.nn.Module):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
     def forward(self, view1, view2, mm):
-        def cosine_attention(pixels,ref_vec):
+
+        def cosine_attention(dense_emb,global_emb):
             '''
-            ref_vec: B X dim_emb
-            pixels: B X H X W X dim_emb
+            Computes cosine similarity between dense_emb and global_emb
+            Args:
+                dense_emb: (B, H, W, C)
+                global_emb: (B, C)
+            Returns
+                atten: (B, H, W)
             '''
-            ref_vec = F.normalize(ref_vec,dim=-1)
-            pixels = F.normalize(pixels,dim=-1)
-            atten = torch.einsum('bcxy,bc->bxy',pixels,ref_vec)
+            dense_emb = F.normalize(dense_emb,dim=-1)
+            global_emb = F.normalize(global_emb,dim=-1)
+            atten = torch.einsum('bhwc,bc->bhw',dense_emb, global_emb)
             return atten
-        predictor = self.predictor.predictor
-        encoder_a = self.online_network.encoder
-        projector_a = self.online_network.projetion
-        encoder_b = self.online_network.encoder
-        projector_b = self.online_network.projetion
-        emb_a = encoder_a(torch.cat([view1, view2])) # 2B X 2048 X 7 X 7
-        b,c,h,w = emb_a.shape # embedding shape
-        emb_b = encoder_b(torch.cat([view2, view1])) # 2B X 2048 X 7 X 7
-        emb_a_pooling = emb_a.mean(dim=(-1,-2)) # 2B X 2048
-        emb_b_pooling = emb_b.mean(dim=(-1,-2)) # 2B X 2048
-        atten_a = cosine_attention(emb_a,emb_b_pooling) # 2B X 7 X 7
-        atten_b = cosine_attention(emb_b,emb_a_pooling) # 2B X 7 X 7
-        # Do normalize (using linear as an example)
-        atten_a = (atten_a + 1.) / 2. # 2B X 7 X 7 in (0,1)
-        atten_b = (atten_b + 1.) / 2. # 2B X 7 X 7 in (0,1)
-        atten_a = F.normalize(atten_a,dim=(-1,-2),p=1) # normalize by "mask area", effectivly /= mask_area
-        atten_b = F.normalize(atten_a,dim=(-1,-2),p=1) 
-        emb_a = torch.einsum('bcxy,bxy->bc',emb_a,atten_a).view(b,1,c)  # 2B X 1 X 2048
-        emb_b = torch.einsum('bcxy,bxy->bc',emb_b,atten_b).view(b,1,c)  # 2B X 1 X 2048 
-        proj_a = projector_a(emb_a)  # 2B X 256 
-        proj_b = projector_b(emb_b) # 2B X 256 
-        prediction_a = predictor(proj_a)
-        # assign names to be consitent for readibility
-        q = prediction_a # B X 256
-        target_z = proj_b # B X 256
-        #Ref return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+
+        online_encoder = self.online_network.encoder
+        online_projector = self.online_network.projetion
+
+        # Get Online Encoding
+        b = view1.size(0)
+        online_encoding = online_encoder(torch.cat([view1, view2])) #(2B, 2048, 7, 7)
+        h, w = online_encoding.shape[2:] #(7, 7)
+        global_pooled = self.global_pool(online_encoding) #(2B, 2048, 1, 1)
+        online_encoding = torch.permute(online_encoding, (0,2,3,1)) #(2B, 7,7, 2048)
+        online_encoding = torch.flatten(online_encoding, 0, 2) #(2B*49, 2048)
+        global_pooled = torch.flatten(global_pooled, 1) #(2B, 2048)
+
+        dense_projection = online_projector(online_encoding) #(2B*49, 256)
+        global_projection = online_projector(global_pooled) # (2B, 256)
+        dense_v1, dense_v2 = dense_projection[:b*h*w], dense_projection[b*h*w:]  #(B*49, 256), (B*49, 256)
+        dense_v1, dense_v2 = torch.reshape(dense_v1, (b, h, w, -1)), torch.reshape(dense_v2, (b, h, w, -1)) #(B, 7, 7, 256), (B, 7, 7, 256)
+        global_v1, global_v2 = global_projection[:b], global_projection[b:] #(B, 256), (B, 256)
+
+        atten_ab = cosine_attention(dense_v1, global_v2) #(B, H, W)
+        atten_ba = cosine_attention(dense_v2, global_v1) #(B, H, W)
+
+        q1 = torch.einsum("bhwc, bhw -> bc", dense_v1, atten_ab) #Use "attention weighted" dense projection (B, 256)
+        q2 = torch.einsum("bhwc,bhw -> bc", dense_v2, atten_ba) #(B, 256)
+        q = self.predictor(torch.cat([q1, q2])) #(2B, 256)
+
+        # Get target encodings
+        with torch.no_grad():
+            self._update_target_network(mm)
+            target_z = self.target_network(torch.cat([view2, view1], dim=0)).detach().clone() #(2B, 256)
+        
         return q, target_z
