@@ -53,6 +53,7 @@ log:
   log_step: 10
   log_dir:
   log_all: False
+  wandb_enable: True
   wandb_id: None # int or 'random' or None
 
 stage: "train"

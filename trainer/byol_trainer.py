@@ -10,7 +10,6 @@ import torch.backends.cudnn as cudnn
 
 from tensorboardX import SummaryWriter
 import apex
-import wandb
 from apex.parallel import DistributedDataParallel as DDP
 from apex import amp
 
@@ -74,8 +73,10 @@ class BYOLTrainer():
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         self.log_all = self.config['log']['log_all']
+        self.wandb_enable = self.config['log']['wandb_enable']
         
-        if self.gpu==0 or self.log_all:
+        if (self.gpu==0 or self.log_all) and self.wandb_enable:
+            import wandb
             wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
         
         try:
@@ -219,7 +220,7 @@ class BYOLTrainer():
             data_time.update(time.time() - end)
             
             wandb_id = None
-            if self.gpu==0 and self.epoch_count<epoch:
+            if self.gpu==0 and self.wandb_enable and self.epoch_count<epoch:
                 if isinstance(self.wandb_id, int):
                     wandb_id = int(self.wandb_id)
                 elif self.wandb_id=='random':
@@ -254,19 +255,21 @@ class BYOLTrainer():
             batch_time.update(time.time() - end)
             end = time.time()
             #import ipdb;ipdb.set_trace()
+            
             # Print log info
-            if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
+            if (self.gpu==0 or self.log_all) and self.steps % self.log_step == 0:
                 
-                # Log per batch stats to wandb (average per epoch is also logged at the end of function)
-                wandb.log({
-                    'lr': round(self.optimizer.param_groups[0]["lr"], 5),
-                    'mm': round(self.mm, 5),
-                    'loss': round(loss_meter.val, 5),
-                    'Batch Time': round(batch_time.val, 5),
-                    'Data Time': round(data_time.val, 5),
-                    'Forward Time': round(forward_time.val, 5),
-                    'Backward Time': round(backward_time.val, 5),
-                })
+                if self.wandb_enable:
+                    # Log per batch stats to wandb (average per epoch is also logged at the end of function)
+                    wandb.log({
+                        'lr': round(self.optimizer.param_groups[0]["lr"], 5),
+                        'mm': round(self.mm, 5),
+                        'loss': round(loss_meter.val, 5),
+                        'Batch Time': round(batch_time.val, 5),
+                        'Data Time': round(data_time.val, 5),
+                        'Forward Time': round(forward_time.val, 5),
+                        'Backward Time': round(backward_time.val, 5),
+                    })
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
@@ -280,7 +283,8 @@ class BYOLTrainer():
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
             images, masks = prefetcher.next()
-        if self.gpu == 0 or self.log_all: 
+            
+        if (self.gpu==0 or self.log_all) and self.wandb_enable:
             # Log averages at end of Epoch
             wandb.log({
                 'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),

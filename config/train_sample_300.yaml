@@ -23,7 +23,7 @@ data:
   mask_type: "fh"
   resize_size: 224 # src: 3.1
   data_workers: 16
-  train_batch_size: 128 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 64 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   num_examples: 12811
@@ -41,7 +41,7 @@ optimizer:
 loss: #src: 3.1
   temperature: 0.1
   mask_rois: 16
-  pool_size: 7 #7, 14, 28, 56
+  pool_size: 14 #7, 14, 28, 56
   
 checkpoint:
   time_stamp:
@@ -53,6 +53,7 @@ log:
   log_step: 10
   log_dir:
   log_all: False
+  wandb_enable: False
   wandb_id: None # int or 'random' or None
 
 stage: "train"

@@ -1,146 +1,21 @@
 #-*- coding:utf-8 -*-
 import torch
-import math
 import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
-from utils.visualize_masks import wandb_sample
+from model.models import MLP,Masknet,FPN
 
-class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
-        super().__init__()
-
-        self.l1 = nn.Linear(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(mask_roi)
-        self.relu1 = nn.ReLU(inplace=True)
-        self.l2 = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        x = self.l1(x)
-        x = self.bn1(x)
-        x = self.relu1(x)
-        x = self.l2(x)
-        return x
-    
-class Masknet(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.mask_rois = config['loss']['mask_rois']
-        self.pool_size = config['loss']['pool_size']
-        self.conv1 = nn.Conv2d(2048, 2048, 1)
-        self.conv2 = nn.Conv2d(2048, 2048, 1)
-        self.conv3 = nn.Conv2d(2048, self.mask_rois, 1)
-        self.softmax = nn.Softmax(dim=-1)
-        #self.norm = nn.BatchNorm2d(self.mask_rois, self.mask_rois)
-
-    def forward(self, x, masks):
-        #import ipdb;ipdb.set_trace()
-        x = self.conv3(F.relu(self.conv2(F.relu(self.conv1(x)))))
-        x = torch.reshape(x,(-1, self.mask_rois, self.pool_size*self.pool_size))
-        y = x+masks
-        y = self.softmax(y)
-        return y
-
-#https://github.com/multimodallearning/pytorch-mask-rcnn/blob/master/model.py    
-class SamePad2d(nn.Module):
-    """Mimics tensorflow's 'SAME' padding.
-    """
-
-    def __init__(self, kernel_size, stride):
-        super(SamePad2d, self).__init__()
-        self.kernel_size = torch.nn.modules.utils._pair(kernel_size)
-        self.stride = torch.nn.modules.utils._pair(stride)
-
-    def forward(self, input):
-        in_width = input.size()[2]
-        in_height = input.size()[3]
-        out_width = math.ceil(float(in_width) / float(self.stride[0]))
-        out_height = math.ceil(float(in_height) / float(self.stride[1]))
-        pad_along_width = ((out_width - 1) * self.stride[0] +
-                           self.kernel_size[0] - in_width)
-        pad_along_height = ((out_height - 1) * self.stride[1] +
-                            self.kernel_size[1] - in_height)
-        pad_left = math.floor(pad_along_width / 2)
-        pad_top = math.floor(pad_along_height / 2)
-        pad_right = pad_along_width - pad_left
-        pad_bottom = pad_along_height - pad_top
-        return F.pad(input, (pad_left, pad_right, pad_top, pad_bottom), 'constant', 0)
-
-    def __repr__(self):
-        return self.__class__.__name__
-
-class FPN(nn.Module):
-    def __init__(self, out_channels,pool_size):
-        super(FPN, self).__init__()
-        self.out_channels = out_channels
-        self.pool_size = pool_size
-        
-        #self.P6 = nn.MaxPool2d(kernel_size=1, stride=2)
-        #self.P5_conv2 = nn.Sequential(
-        #    SamePad2d(kernel_size=3, stride=1),
-        #    nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, stride=1),
-        #)
-            
-        self.P5_conv1 = nn.Conv2d(2048, self.out_channels, kernel_size=1, stride=1)
-        self.P4_conv1 =  nn.Conv2d(1024, self.out_channels, kernel_size=1, stride=1)
-        
-        if self.pool_size==14:
-            self.P4_conv2 = nn.Sequential(
-                SamePad2d(kernel_size=3, stride=1),
-                nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, stride=1),
-            )
-            return
-        
-        self.P3_conv1 = nn.Conv2d(512, self.out_channels, kernel_size=1, stride=1)
-        if self.pool_size==28:
-            self.P3_conv2 = nn.Sequential(
-                SamePad2d(kernel_size=3, stride=1),
-                nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, stride=1),
-            )
-            return
-            
-        self.P2_conv1 = nn.Conv2d(256, self.out_channels, kernel_size=1, stride=1)         
-        self.P2_conv2 = nn.Sequential(
-            SamePad2d(kernel_size=3, stride=1),
-            nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, stride=1),
-        )
-        return
-
-    def forward(self,x,c2_out,c3_out,c4_out):
-        p5_out = self.P5_conv1(x)
-        
-        p4_out = self.P4_conv1(c4_out) + F.upsample(p5_out, scale_factor=2)
-        if self.pool_size==14:
-            return self.P4_conv2(p4_out)
-        
-        p3_out = self.P3_conv1(c3_out) + F.upsample(p4_out, scale_factor=2)
-        if self.pool_size==28:
-            return self.P3_conv2(p3_out)
-        
-        p2_out = self.P2_conv1(c2_out) + F.upsample(p3_out, scale_factor=2)
-        if self.pool_size==56:
-            return self.P2_conv2(p2_out)
-           
-        #p5_out = self.P5_conv2(p5_out)
-        #p4_out = self.P4_conv2(p4_out)
-        #p3_out = self.P3_conv2(p3_out)
-        #p2_out = self.P2_conv2(p2_out)
-
-        # P6 is used for the 5th anchor scale in RPN. Generated by
-        # subsampling from P5 with stride of 2.
-        #p6_out = self.P6(p5_out)
-
-        #return [p2_out, p3_out, p4_out, p5_out, p6_out]
-#####  
-    
-    
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.mask_rois = config['loss']['mask_rois']
         self.pool_size = config['loss']['pool_size']
         self.train_batch_size = config['data']['train_batch_size']
+        
+        if config['log']['wandb_enable']:
+            from utils.visualize_masks import wandb_sample
+            
         # backbone
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
@@ -179,19 +54,16 @@ class EncoderwithProjection(nn.Module):
             
         masks,mask_ids = sample_masks(masks,self.mask_rois)
 
+        # Wandb Logging
         if wandb_id!=None:
-            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),
-                         torch.reshape(masks[wandb_id+self.train_batch_size],
-                                       (self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),'sample_masks_'+net_type)
+            wandb_sample(self.mask_rois,self.pool_size,masks[wandb_id],masks[wandb_id+self.train_batch_size],'sample_masks_'+net_type)
         
         if mnet!= None:
             masks = mnet(x.detach(),masks.to('cuda'))
-            
-        if wandb_id!=None:
-            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),
-                 torch.reshape(masks[wandb_id+self.train_batch_size],
-                               (self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),'masknet_masks_'+net_type)
         
+        # Wandb Logging
+        if wandb_id!=None:
+            wandb_sample(self.mask_rois,self.pool_size,masks[wandb_id],masks[wandb_id+self.train_batch_size],'masknet_masks_'+net_type)
         
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape

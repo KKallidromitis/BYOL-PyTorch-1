@@ -19,12 +19,12 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/jacklishufan/ByteTrack/datasets/coco"
+  image_dir: ""
   mask_type: "coco"
   resize_size: 224
   data_workers: 16
-  train_batch_size: 4
-  val_batch_size: 4
+  train_batch_size: 64
+  val_batch_size: 32
   dual_views: true
   num_examples: 118287 #1281167
 
@@ -53,6 +53,7 @@ log:
   log_step: 10
   log_dir:
   log_all: False
+  wandb_enable: True
   wandb_id: None # int or 'random' or None
 
 stage: "train"
