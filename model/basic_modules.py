@@ -12,13 +12,15 @@ class MLP(nn.Module):
         super().__init__()
 
         self.l1 = nn.Linear(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(mask_roi)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.relu1 = nn.ReLU(inplace=True)
         self.l2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
         x = self.l1(x)
-        x = self.bn1(x)
+        batch_size,n_channal,n_emb= x.shape # B * 16 * f
+        x = self.bn1(x.reshape(batch_size*n_channal,n_emb))
+        x = x.reshape(batch_size,n_channal,n_emb)
         x = self.relu1(x)
         x = self.l2(x)
         return x
