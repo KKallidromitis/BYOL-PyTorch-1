@@ -37,6 +37,7 @@ class EncoderwithProjection(nn.Module):
 
     def forward(self, x):
         x = self.encoder(x)
+        x = F.adaptive_avg_pool2d(x, (1,1))
         x = torch.flatten(x, 1)
         x = self.projetion(x)
         return x

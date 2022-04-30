@@ -40,7 +40,7 @@ class BYOLModel(torch.nn.Module):
         b = view1.size(0)
         online_encoding = online_encoder(torch.cat([view1, view2])) #(2B, 2048, 7, 7)
         h, w = online_encoding.shape[2:] #(7, 7)
-        global_pooled = F.adaptive_avg_pool2d((online_encoding), (1,1)) #(2B, 2048, 1, 1)
+        global_pooled = F.adaptive_avg_pool2d(online_encoding, (1,1)) #(2B, 2048, 1, 1)
         online_encoding = torch.permute(online_encoding, (0,2,3,1)) #(2B, 7,7, 2048)
         online_encoding = torch.flatten(online_encoding, 0, 2) #(2B*49, 2048)
         global_pooled = torch.flatten(global_pooled, 1) #(2B, 2048)
