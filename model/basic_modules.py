@@ -26,7 +26,8 @@ class EncoderwithProjection(nn.Module):
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
         base_encoder = models.__dict__[net_name](pretrained=pretrained)
-        self.encoder = nn.Sequential(*list(base_encoder.children())[:-1])
+        self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
 
         # projection
         input_dim = config['model']['projection']['input_dim']
@@ -35,10 +36,12 @@ class EncoderwithProjection(nn.Module):
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
     def forward(self, x):
-        x = self.encoder(x)
-        x = torch.flatten(x, 1)
-        x = self.projetion(x)
-        return x
+        import ipdb; ipdb.set_trace()
+        encoding = self.encoder(x) #(B, 2048, 7, 7)
+        x = self.pool(encoding) #(B, 2048, 1, 1)
+        x = torch.flatten(x, 1) #(B, 2048)
+        x = self.projetion(x) #(B, 256)
+        return encoding, x
 
 class Predictor(nn.Module):
     def __init__(self, config):
