@@ -89,5 +89,12 @@ def to_binary_mask(label_map,c_m,resize_to=None):
     return label_map_one_hot.view(b,c_m,h,w)
 
 
-def cosine_sim(x,y):
-    '''n,c;m,d->n,m'''
+def refine_mask(src_label,target_label,mask_dim,src_dim=16):
+        # B X H_mask X W_mask
+        n_tgt = torch.max(target_label).item()+1
+        slic_mask = to_binary_mask(target_label,n_tgt,(mask_dim,mask_dim))  # B X 100 X H_mask X W_mask
+        masknet_label_map = to_binary_mask(src_label,src_dim,(mask_dim,mask_dim)) # binary B X 16 X H_mask X W_mask
+        pooled,_ =maskpool(slic_mask,masknet_label_map) # B X NUM_SLIC X N_MASKS
+        pooled_ids = torch.argmax(pooled,-1) # B X NUM_SLIC  X 1 => label map
+        converted_idx = torch.einsum('bchw,bc->bchw',slic_mask ,pooled_ids).sum(1).long().detach() #label map in hw space
+        return converted_idx

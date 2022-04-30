@@ -339,13 +339,14 @@ class BYOLTrainer():
             # mask B X (3 Views) X (2 channels [intersection, SLIC]  ) X H X W
             input_masks = masks[:,:2,0,...].contiguous() # discard last mask,B X 2 X 224 X 224
             slic_labelmap = masks[:,2,1,...].contiguous() # B X 1 X H X W
+            full_view_prior_mask = masks[:,2,0,...].contiguous() # B X 1 X H X W
             # measure data loading time
             data_time.update(time.time() - end)
             #breakpoint()
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet)
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
@@ -390,6 +391,13 @@ class BYOLTrainer():
                     'Backward Time': round(backward_time.val, 5),
                 })
                 if  (self.steps//self.log_step) % 5 == 1:
+                    # img_mask = mask_target[0].detach().cpu()
+                    # applied_mask = applied_mask[0].detach().cpu()
+
+                    # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
+                    # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+
+
                     img_mask = mask_target[0].detach().cpu()
                     applied_mask = applied_mask[0].detach().cpu()
 
@@ -399,7 +407,7 @@ class BYOLTrainer():
                     mask_visual = mask_visual.view(mh*mw,mc)
                     mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
                     wandb_dump_img([view_raw,img_mask,mask_visual,applied_mask],"Masks")
-                    #breakpoint()
+
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'

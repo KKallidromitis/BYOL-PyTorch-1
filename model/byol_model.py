@@ -3,7 +3,7 @@ from operator import imod
 from jax import mask
 import torch
 from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
-from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool
+from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool,refine_mask
 from torchvision import ops
 import torch.nn.functional as F
 from torchvision.models._utils import IntermediateLayerGetter
@@ -33,7 +33,7 @@ class BYOLModel(torch.nn.Module):
         # predictor
         self.predictor = Predictor(config)
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
-
+        self.mask_mode = 'slic+fh'
         self._initializes_target_network()
         self._fpn = None
         self.slic_only = True
@@ -100,9 +100,47 @@ class BYOLModel(torch.nn.Module):
         labels = torch.LongTensor(labels).cuda()
         return labels
         
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+        def cosine_attention(pixels,ref_vec):
+            '''
+            ref_vec: B X dim_emb
+            pixels: B X H X W X dim_emb
+            '''
+            ref_vec = F.normalize(ref_vec,dim=-1)
+            pixels = F.normalize(pixels,dim=-1)
+            atten = torch.einsum('bcxy,bc->bxy',pixels,ref_vec)
+            return atten
+        predictor = self.predictor.predictor
+        encoder_a = self.online_network.encoder
+        projector_a = self.online_network.projetion
+        encoder_b = self.online_network.encoder
+        projector_b = self.online_network.projetion
+        emb_a = encoder_a(torch.cat([view1, view2])) # 2B X 2048 X 7 X 7
+        b,c,h,w = emb_a.shape # embedding shape
+        emb_b = encoder_b(torch.cat([view2, view1])) # 2B X 2048 X 7 X 7
+        emb_a_pooling = emb_a.mean(dim=(-1,-2)) # 2B X 2048
+        emb_b_pooling = emb_b.mean(dim=(-1,-2)) # 2B X 2048
+        breakpoint()
+        atten_a = cosine_attention(emb_a,emb_b_pooling) # 2B X 7 X 7
+        atten_b = cosine_attention(emb_b,emb_a_pooling) # 2B X 7 X 7
+        # Do normalize (using linear as an example)
+        atten_a = (atten_a + 1.) / 2. # 2B X 7 X 7 in (0,1)
+        atten_b = (atten_b + 1.) / 2. # 2B X 7 X 7 in (0,1)
+        atten_a = F.normalize(atten_a,dim=(-1,-2),p=1) # normalize by "mask area", effectivly /= mask_area
+        atten_b = F.normalize(atten_a,dim=(-1,-2),p=1) 
+        emb_a = torch.einsum('bcxy,bxy->bc',emb_a,atten_a).view(b,1,c)  # 2B X 1 X 2048
+        emb_b = torch.einsum('bcxy,bxy->bc',emb_b,atten_b).view(b,1,c)  # 2B X 1 X 2048 
+        proj_a = projector_a(emb_a)  # 2B X 256 
+        proj_b = projector_b(emb_b) # 2B X 256 
+        prediction_a = predictor(proj_a)
+        # assign names to be consitent for readibility
+        q = prediction_a # B X 256
+        target_z = proj_b # B X 256
+        #Ref return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+        return q,target_z,atten_a,atten_b
         
 
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False):
+    def _forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
         # online network forward
         #import ipdb;ipdb.set_trace()
         #breakpoint()
@@ -114,6 +152,7 @@ class BYOLModel(torch.nn.Module):
         #breakpoint()
         if self.masknet_on:
             if self.slic_only:
+                # K Means + SLIC
                 feats = self.fpn(raw_image)['c4']
                 masks = self.masknet(feats.detach())
                 #breakpoint()
@@ -149,13 +188,16 @@ class BYOLModel(torch.nn.Module):
                 raw_masks = F.normalize(masks,dim=1)
                 raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
                 if user_masknet:
+                    # USE hirearchl clustering on outputs of masknet
                     converted_idx = self.get_label_map(raw_masks)
+                    converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
                 else:
                     converted_idx = raw_mask_target
                 converted_idx_b = to_binary_mask(converted_idx,16)
                 #breakpoint()
                 mask_dim = 56
             else:
+                # Masknet output a softmax labelmap, then this label map is refined using
                 raw_encoding = self.target_network.encoder(raw_image)
                 b,slic_h,slic_w = slic_mask.shape
                 masks = self.masknet(raw_encoding.detach()) # raw_image: B X 3 X H X W, ->Mask B X 16 X H_mask X W_mask
@@ -203,13 +245,39 @@ class BYOLModel(torch.nn.Module):
             masks = convert_binary_mask(input_masks)
             masks,mask_ids = sample_masks(masks)
             mask_batch_size = masks.shape[0] // 2
-            masks_a = masks[:mask_batch_size]
-            masks_b = masks[mask_batch_size:]
-            masks_inv = torch.cat([masks_b, masks_a])
             num_segs = torch.FloatTensor([x.unique().shape[0] for x in mask_ids]).mean()
-            raw_masks = None
-            raw_mask_target = None #B X H X W (input mask)
-            converted_idx = None
+            if self.mask_mode == 'slic+fh':
+                sample_ids = mask_ids[:mask_batch_size]
+                b,slic_h,slic_w = slic_mask.shape
+                slic_mask = slic_mask.view(b,slic_h,slic_w)  # B X H_mask X W_mask
+                raw_mask_full_view = full_view_prior_mask
+                mask_dim = 56
+                raw_mask_full_view_refined = refine_mask(raw_mask_full_view,slic_mask,mask_dim,src_dim=257)  # B X 56 X 56
+                converted_idx_b = to_binary_mask(raw_mask_full_view_refined,257)
+                converted_idx_b = torch.stack([converted_idx_b[b][sample_ids[b]] for b in range(b)])
+                rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+                rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+                flip_1 = roi_t[:,0,4]
+                flip_2 = roi_t[:,1,4]
+                #detached_mask = masks.detach()
+                aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
+                aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
+                mask_b,mask_c,h,w =aligned_1.shape
+                aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w)
+                aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w)
+                masks = torch.cat([aligned_1, aligned_2])
+                masks_inv = torch.cat([aligned_2, aligned_1])
+                #breakpoint()
+                raw_masks = raw_mask_full_view
+                raw_mask_target = raw_mask_full_view
+                converted_idx = raw_mask_full_view_refined
+            else:
+                masks_a = masks[:mask_batch_size]
+                masks_b = masks[mask_batch_size:]
+                masks_inv = torch.cat([masks_b, masks_a])
+                raw_masks = None
+                raw_mask_target = None #B X H X W (input mask)
+                converted_idx = None
 
 
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids))
