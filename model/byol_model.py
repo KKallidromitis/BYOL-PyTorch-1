@@ -17,10 +17,6 @@ class BYOLModel(torch.nn.Module):
         # predictor
         self.predictor = Predictor(config)
 
-        # Misc fn
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.softmax2d = nn.Softmax2d()
-
         self._initializes_target_network()
 
     @torch.no_grad()
@@ -49,6 +45,7 @@ class BYOLModel(torch.nn.Module):
             dense_emb = F.normalize(dense_emb,dim=-1)
             global_emb = F.normalize(global_emb,dim=-1)
             atten = torch.einsum('bhwc,bc->bhw',dense_emb, global_emb)
+            atten = F.relu(atten, inplace=True)
             return atten
 
         online_encoder = self.online_network.encoder
@@ -58,7 +55,7 @@ class BYOLModel(torch.nn.Module):
         b = view1.size(0)
         online_encoding = online_encoder(torch.cat([view1, view2])) #(2B, 2048, 7, 7)
         h, w = online_encoding.shape[2:] #(7, 7)
-        global_pooled = self.global_pool(online_encoding) #(2B, 2048, 1, 1)
+        global_pooled = F.adaptive_avg_pool2d((online_encoding), (1,1)) #(2B, 2048, 1, 1)
         online_encoding = torch.permute(online_encoding, (0,2,3,1)) #(2B, 7,7, 2048)
         online_encoding = torch.flatten(online_encoding, 0, 2) #(2B*49, 2048)
         global_pooled = torch.flatten(global_pooled, 1) #(2B, 2048)
