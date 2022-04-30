@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .basic_modules import EncoderwithProjection, Predictor
+from .basic_modules import EncoderwithProjection, Predictor, cosine_attention
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -32,21 +32,6 @@ class BYOLModel(torch.nn.Module):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
     def forward(self, view1, view2, mm):
-
-        def cosine_attention(dense_emb,global_emb):
-            '''
-            Computes cosine similarity between dense_emb and global_emb
-            Args:
-                dense_emb: (B, H, W, C)
-                global_emb: (B, C)
-            Returns
-                atten: (B, H, W)
-            '''
-            dense_emb = F.normalize(dense_emb,dim=-1)
-            global_emb = F.normalize(global_emb,dim=-1)
-            atten = torch.einsum('bhwc,bc->bhw',dense_emb, global_emb)
-            atten = F.relu(atten, inplace=True)
-            return atten
 
         online_encoder = self.online_network.encoder
         online_projector = self.online_network.projetion

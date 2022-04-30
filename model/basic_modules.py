@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 from torchvision import models
+import torch.nn.functional as F
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -52,3 +53,18 @@ class Predictor(nn.Module):
 
     def forward(self, x):
         return self.predictor(x)
+
+def cosine_attention(dense_emb,global_emb):
+    '''
+    Computes cosine similarity between dense_emb and global_emb
+    Args:
+        dense_emb: (B, H, W, C)
+        global_emb: (B, C)
+    Returns
+        atten: (B, H, W)
+    '''
+    dense_emb = F.normalize(dense_emb,dim=-1)
+    global_emb = F.normalize(global_emb,dim=-1)
+    atten = torch.einsum('bhwc,bc->bhw',dense_emb, global_emb)
+    atten = F.relu(atten, inplace=True)
+    return atten
