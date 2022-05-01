@@ -1,3 +1,4 @@
+from tkinter.tix import Tree
 import numpy as np
 import torch
 import skimage
@@ -43,7 +44,7 @@ def convert_binary_mask(mask,max_mask_id=257,pool_size=7):
     binary_mask = binary_mask.permute(0, 2, 1)
     return binary_mask
 
-def sample_masks(binary_mask,n_masks=16):
+def sample_masks(binary_mask,n_masks=16,no_bg=True):
     batch_size=binary_mask.shape[0]
     #breakpoint()
     mask_exists = torch.greater(binary_mask.sum(-1), 1e-3)
@@ -52,14 +53,16 @@ def sample_masks(binary_mask,n_masks=16):
     #breakpoint()
     sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
     sel_masks = torch.log(sel_masks)
-    sel_masks = sel_masks[:,1:] # Do not sample channel0==Background
+    if no_bg:
+        sel_masks = sel_masks[:,1:] # Do not sample channel0==Background
     
     dist = torch.distributions.categorical.Categorical(logits=sel_masks)
     mask_ids = dist.sample([n_masks]).T
     mask_ids = mask_ids.repeat([2,1])
     #breakpoint()
     #mask_ids[32:]=mask_ids[:32]
-    mask_ids += 1 # never sample background
+    if no_bg:
+        mask_ids += 1 # never sample background
     sample_mask = torch.stack([binary_mask[b][mask_ids[b]] for b in range(batch_size)])
     
     return sample_mask,mask_ids

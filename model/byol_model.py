@@ -37,7 +37,8 @@ class BYOLModel(torch.nn.Module):
         self._initializes_target_network()
         self._fpn = None
         self.slic_only = True
-        self.n_kmeans = 16
+        self.n_kmeans = 64
+        self.n_mask = 64
         self.kmeans = KMeans(self.n_kmeans,)
         self.kmeans_gather = False
         self.rank = config['rank']
@@ -100,7 +101,7 @@ class BYOLModel(torch.nn.Module):
         labels = torch.LongTensor(labels).cuda()
         return labels
         
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+    def forward_attention(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
         def cosine_attention(pixels,ref_vec):
             '''
             ref_vec: B X dim_emb
@@ -140,7 +141,25 @@ class BYOLModel(torch.nn.Module):
         return q,target_z,atten_a,atten_b
         
 
-    def _forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+    def kmeans_slic(self,feats,slic_mask,gather=False):
+        b,slic_h,slic_w = slic_mask.shape
+        super_pixel = to_binary_mask(slic_mask,100,resize_to=(14,14))
+        pooled, _ = maskpool(super_pixel,feats)
+        # do kemans
+        super_pixel_pooled = pooled.view(-1,1024).detach()
+        if gather:
+            super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
+        else:
+            super_pixel_pooled_large = super_pixel_pooled
+        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1))
+        if gather:
+            start_idx =  self.rank *b
+            end_idx = start_idx + b
+            labels = labels[start_idx:end_idx]
+        labels = labels.view(b,-1)
+        return None
+        
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
         # online network forward
         #import ipdb;ipdb.set_trace()
         #breakpoint()
@@ -150,11 +169,11 @@ class BYOLModel(torch.nn.Module):
          # B X 2048 X 7 X 7
         ## Use masknet label map
         #breakpoint()
-        if self.masknet_on:
+        if self.masknet_on or 1:
             if self.slic_only:
                 # K Means + SLIC
                 feats = self.fpn(raw_image)['c4']
-                masks = self.masknet(feats.detach())
+                
                 #breakpoint()
                 b,slic_h,slic_w = slic_mask.shape
                 slic_mask = slic_mask.view(b,slic_h,slic_w)  # B X H_mask X W_mask
@@ -185,15 +204,17 @@ class BYOLModel(torch.nn.Module):
                 #breakpoint()
                 #breakpoint()
                 #converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
-                raw_masks = F.normalize(masks,dim=1)
                 raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
                 if user_masknet:
+                    masks = self.masknet(feats.detach())
+                    raw_masks = F.normalize(masks,dim=1)
                     # USE hirearchl clustering on outputs of masknet
                     converted_idx = self.get_label_map(raw_masks)
                     converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
                 else:
+                    raw_masks = torch.ones(b,16,56,56).float().cuda()
                     converted_idx = raw_mask_target
-                converted_idx_b = to_binary_mask(converted_idx,16)
+                converted_idx_b = to_binary_mask(converted_idx,self.n_mask)
                 #breakpoint()
                 mask_dim = 56
             else:
@@ -236,6 +257,7 @@ class BYOLModel(torch.nn.Module):
                 aligned_2 = aligned_2 * intersec_masks_2
             mask_ids = None
             masks = torch.cat([aligned_1, aligned_2])
+            #masks,mask_ids = sample_masks(masks,16,False)
             masks_inv = torch.cat([aligned_2, aligned_1])
             num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
         else:
@@ -279,15 +301,13 @@ class BYOLModel(torch.nn.Module):
                 raw_mask_target = None #B X H X W (input mask)
                 converted_idx = None
 
-
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids))
+        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,None))
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks_inv.to('cuda'),mask_ids,mask_ids)
-            target_z = target_z.detach().clone()
+            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks_inv.to('cuda'),mask_ids,None)
+            target_z = target_z.detach().clone()        
         
-
         return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
 
     def _legacy_forward(self, view1, view2, mm, masks):

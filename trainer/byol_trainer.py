@@ -25,7 +25,7 @@ from utils.mask_utils import to_binary_mask
 from utils.math import xlogx
 from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
-
+from utils.detconb_loss import DetconInfoNCECriterion
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
@@ -38,6 +38,7 @@ class BYOLTrainer():
         self.rank = self.config['rank']
         self.gpu = self.config['local_rank']
         self.distributed = self.config['distributed']
+        self.detcon_loss = DetconInfoNCECriterion(self.config)
 
         """get the train parameters!"""
         self.total_epochs = self.config['optimizer']['total_epochs']
@@ -196,10 +197,10 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
+    def forward_loss(self, preds, targets,masks,raw_mask,mask_target,pind,tind):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
-        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
+        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target,pind,tind)
 
     def _forward_new_hel_loss(self, preds, targets,masks):
         #NOT WORKING
@@ -243,7 +244,19 @@ class BYOLTrainer():
         #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
         return loss,eh_obj,eh_dist,inv_loss
     
-    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
+
+    def _forward_masked_contrasitive_loss(self, preds, targets,masks,raw_mask,mask_target,pind,tind):
+        #import ipdb;ipdb.set_trace()
+        #breakpoint()
+        #breakpoint()
+        # b,n_masks,_ = preds.shape
+        # b = b // 2
+        # pind = tind = torch.LongTensor(range(n_masks)).reshape(1,n_masks).repeat(2*b,1).cuda()
+        loss = self.detcon_loss(preds,targets,pind,tind)
+        zero = torch.tensor(0.0)
+        return loss,zero,zero,loss,zero
+
+    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,pind,tind):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         #breakpoint()
@@ -280,7 +293,7 @@ class BYOLTrainer():
         #eh_dist = -(xlogx(r)).sum()/ n_f
         alpha = 0.5
         
-        if not self.masknet_on:
+        if True or self.masknet_on:
             loss = inv_loss
             return  loss,eh_obj,eh_dist,inv_loss,torch.tensor(0.0)
         #mask_loss = self.cross_entrophy_loss(raw_mask,mask_target)
@@ -297,7 +310,6 @@ class BYOLTrainer():
         same_object = F.normalize(same_object,dim=-1,p=1)
         #mask_loss = self.cross_entrophy_loss(logits.detach().cpu(),same_object.detach().cpu())
         mask_loss = -torch.sum(same_object * torch.nn.functional.log_softmax(logits,dim = -1), dim=-1).mean()
-        mask_target
         loss = inv_loss + alpha * mask_loss# standard BYOL
         # alpha  = 0
         # beta = 100
@@ -324,7 +336,8 @@ class BYOLTrainer():
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
-        use_masknet = epoch > 30
+        use_masknet = epoch < -1
+        use_masknet = False
         #breakpoint()
         while images is not None:
             i += 1
@@ -350,7 +363,7 @@ class BYOLTrainer():
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,pinds,tinds)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
