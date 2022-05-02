@@ -4,10 +4,20 @@ model:
   backbone:
     type: "resnet50"
     pretrained: false
-  projection:   # src: A.2 of detcon paper
+  projection:   # src: c5
     type: "MLP" 
     input_dim: 2048
     hidden_dim: 4096
+    output_dim: 256
+  projection_c4:   # src: A.2 of detcon paper
+    type: "MLP" 
+    input_dim: 1024
+    hidden_dim: 1024
+    output_dim: 256
+  projection_c3:   # src: A.2 of detcon paper
+    type: "MLP" 
+    input_dim: 512
+    hidden_dim: 512
     output_dim: 256
   predictor:
     type: "MLP"
@@ -24,8 +34,8 @@ data:
   #image_dir: "/home/jacklishufan/ByteTrack/datasets/coco"
   mask_type: "fh"
   resize_size: 224 # src: 3.1
-  data_workers: 16
-  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  data_workers: 8
+  train_batch_size: 16 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
@@ -53,7 +63,7 @@ checkpoint:
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:
-  log_step: 10
+  log_step: 20
   log_dir:
   log_all: False
 

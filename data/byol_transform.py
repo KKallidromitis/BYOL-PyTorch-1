@@ -12,6 +12,12 @@ from torchvision.datasets.folder import default_loader,make_dataset,IMG_EXTENSIO
 from pycocotools.coco import COCO
 import os
 from skimage.segmentation import slic
+from utils.selective_search import *
+
+def de_normalize(view1):
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
+    return (view1 * torch.tensor(std).reshape(3,1,1)*255) + torch.tensor(mean).reshape(3,1,1)*255
 
 def get_differentialble_transform(i,j,h,w,flip,crop_size):
         def g(x): # differentiable transform
@@ -29,6 +35,14 @@ def to_slic(img,**kwargs):
     seg = torch.from_numpy(seg)
     return seg.view(1, h, w)
 
+def to_selective_search(img,**kwargs):
+    segment_mask0,_ = selective_search(img,colour_space="hsv",scale=1,sim_threshold=0.95,sigma=0.8,min_size=300)
+    segment_mask1,_ = selective_search(img,colour_space="hsv",scale=20,sim_threshold=0.85,min_size=600)
+    segment_mask2,_ = selective_search(img,colour_space="hsv",scale=20,sim_threshold=0.75,min_size=1000)
+    segment_mask3,_ = selective_search(img,colour_space="hsv",scale=20,sim_threshold=0.65,min_size=1000)
+    return torch.from_numpy(np.stack([segment_mask0,segment_mask1,segment_mask2,segment_mask3],axis=0))
+
+
 class MultiViewDataInjector():
     def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224):
         self.transform_list = transform_list
@@ -40,7 +54,7 @@ class MultiViewDataInjector():
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
 
-    def __call__(self,sample,mask):
+    def __call__(self,sample,mask,selective_search_mask=None):
         ww,hh = sample.size
         i1, j1, h1, w1 = self._get_crop_box(sample)
         i2, j2, h2, w2 = self._get_crop_box(sample)
@@ -54,32 +68,27 @@ class MultiViewDataInjector():
         h = i_max-i_min
         w = j_max-j_min
         area = h * w if h > 0 and w > 0 else 0
-        # assert h > 0 
-        # assert w > 0
-        # print((i1, j1, h1, w1),(i2, j2, h2, w2))
-        # assert area > 0 # Must postive intersection area between views
-        #assert()
-        #breakpoint()
         if self.over_lap_mask:
             intersect_masks = torch.zeros_like(mask)
             if area > 0:
                 intersect_masks[:,i_min:i_max,j_min:j_max] = 1
             #breakpoint()
             mask = intersect_masks * mask
-        #print(mask.shape)
-        #assert mask.sum() > 0
         assert len(self.transform_list) == 3
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1),do_flip1)
         output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2),do_flip2)
         output2,mask2 = self.transform_list[2](sample,mask,(0, 0, hh, ww),False)
-        mask0 = torch.cat([mask0,torch.ones_like(mask0[:1])])
-        mask1 = torch.cat([mask1,torch.ones_like(mask1[:1])])
-        if self.slic:
-            super_pixel_id_map = to_slic(output2,n_segments=100) # SLIC GROUPING to 100 superpixels 1X H X W
-            mask2 = torch.cat([mask2,super_pixel_id_map])
+        if selective_search_mask is not None:
+            selective_search_mask = torch.from_numpy(selective_search_mask)
+            super_pixel_id_map = selective_search_mask[1:2]
+            selective_search_id_maps = selective_search_mask[2:]
         else:
-            mask2 = torch.cat([mask2,torch.ones_like(mask2[:1])])
+            super_pixel_id_map = to_slic(output2,n_segments=100) # SLIC GROUPING to 100 superpixels 1X H X W
+            selective_search_id_maps = to_selective_search(de_normalize(output2).permute(1,2,0).int()) #4 X H X W
+        mask2 = torch.cat([mask2,super_pixel_id_map,selective_search_id_maps])
         output_cat = torch.stack([output0,output1,output2], dim=0)
+        mask0 = torch.cat([mask0,torch.ones_like(mask0[:1]).repeat(5,1,1)])
+        mask1 = torch.cat([mask1,torch.ones_like(mask1[:1]).repeat(5,1,1)])
         #Hard code pipeline for generate mask for encoder
         transform1 = [i1,j1,i1+h1,j1+w1,do_flip1]
         transform2 = [i2,j2,i2+h2,j2+w2,do_flip2]
@@ -91,7 +100,7 @@ class MultiViewDataInjector():
         return output_cat,mask_cat,transforms
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=''):
+    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path='',gen_mask=False):
         self.root = root
         self.transform = transform
         #self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
@@ -107,6 +116,7 @@ class SSLMaskDataset(VisionDataset):
         self.loader = default_loader
         self.img_to_mask = self._get_masks(mask_file)
         self.mask_file_path = mask_file_path
+        self.gen_mask = gen_mask
 
     def _get_masks(self, mask_file):
         with open(mask_file, "rb") as file:
@@ -114,19 +124,26 @@ class SSLMaskDataset(VisionDataset):
         
     def __getitem__(self, index: int):
         path, _ = self.samples[index]
-        
+        file_name = path.split('/')[-1].split('.')[0]
+        ROOT = '/shared/jacklishufan/mask-selective-search'
+        #TODO:move to config
+        tgt = os.path.join(ROOT,file_name+'.pkl')
         # Load Image
         sample = self.loader(path)
         
         # Load Mask
         mask_file_name = self.img_to_mask[index].split('/')[-1]
         mask_file_path = os.path.join(self.mask_file_path,mask_file_name)
+        selective_search_mask = None
+        if not self.gen_mask:
+            with open(tgt, "rb") as file:
+                selective_search_mask = pickle.load(file)
         with open(mask_file_path, "rb") as file:
             mask = pickle.load(file)
             mask += 1 # no zero, reserved for nothing
         # Apply transforms
         if self.transform is not None:
-            sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0))
+            sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0),selective_search_mask)
         return sample,mask,diff_transfrom
 
     def __len__(self) -> int:

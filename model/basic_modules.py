@@ -6,6 +6,7 @@ from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
 import numpy as np
+from torchvision.models._utils import IntermediateLayerGetter
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -155,6 +156,19 @@ class FCNMaskNet(nn.Module):
         return x
 
 
+def build_mlp(config):
+    input_dim = config['input_dim']
+    hidden_dim = config['hidden_dim']
+    output_dim = config['output_dim']
+    return MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+
+def normalize_mask(mask):
+    b,c_m,h,w = mask.shape
+    mask = mask.view(b,c_m,h*w)
+    mask_area = mask.sum(dim=-1,keepdims=True)
+    mask = mask / torch.maximum(mask_area, torch.ones_like(mask))
+    return mask.view(b,c_m,h,w)
+
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -162,38 +176,35 @@ class EncoderwithProjection(nn.Module):
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
         base_encoder = models.__dict__[net_name](pretrained=pretrained)
-        self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
+        base_encoder = (nn.Sequential(*list(base_encoder.children())[:-2]))
+        #self.encoder = (nn.Sequential(*list(base_encoder.children())[:-2]))
+        self.encoder = IntermediateLayerGetter(base_encoder, return_layers={'7':'out','6':'c4','5':'c3'})
 
         # projection
-        input_dim = config['model']['projection']['input_dim']
-        hidden_dim = config['model']['projection']['hidden_dim']
-        output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
+        self.projetion = build_mlp(config['model']['projection'])
+        self.projetion_c4 = build_mlp(config['model']['projection_c4'])
+        self.projetion_c3 = build_mlp(config['model']['projection_c3'])
         
-    def forward(self, x, masks,mask_ids, mnet=None):
+    def forward(self, x, masks_c5,masks_c4,masks_c3):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
+        c5,c4,c3 = x['out'],x['c4'],x['c3']
+        bs, emb, emb_x, emb_y  = c5.shape
+        # c5 = c5.permute(0,2,3,1) # (B,7,7,2048)
+        # c4 = c4.permute(0,2,3,1)  # (B,14,14,1024)
+        # c3 = c3.permute(0,2,3,1)  # (B,28,28,512)
+        masks_c5 = F.interpolate(masks_c5,(7,7))
+        masks_c4 = F.interpolate(masks_c4,(14,14))
+        masks_c3 = F.interpolate(masks_c4,(28,28))
+        c5 = torch.einsum('bcxy,bmxy->bmc',c5,normalize_mask(masks_c5))
+        c4 = torch.einsum('bcxy,bmxy->bmc',c4,normalize_mask(masks_c4))
+        c3 = torch.einsum('bcxy,bmxy->bmc',c3,normalize_mask(masks_c3))
         #breakpoint()
-        # Detcon mask multiply
-        # if mnet!= None:
-        #     masks = torch.reshape(mnet(x),(-1, 16, 49))
-
-        ## Passed in mask, direct pooling
-        bs, emb, emb_x, emb_y  = x.shape
-        x = x.permute(0,2,3,1) # (B,7,7,2048)
-
-        #breakpoint()
-        masks_area = masks.sum(axis=-1, keepdims=True)
-        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
-        #smpl_masks = torch.ones((bs,1,49))
-        #Overwreite with standard BYOL
-        #breakpoint()
-        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
-        #breakpoint()
-        x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
-        x = self.projetion(x)
-        return x, mask_ids
+        c5 = self.projetion(c5)
+        c4 = self.projetion_c4(c4)
+        c3 = self.projetion_c3(c3)
+        return c5,c4,c3
 
 class Predictor(nn.Module):
     def __init__(self, config):
@@ -205,8 +216,8 @@ class Predictor(nn.Module):
         output_dim = config['model']['predictor']['output_dim']
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x, mask_ids):
-        return self.predictor(x), mask_ids
+    def forward(self, x):
+        return self.predictor(x)
 
 
 class FCNMaskNetV2(nn.Module):

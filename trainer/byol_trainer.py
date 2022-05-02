@@ -125,8 +125,8 @@ class BYOLTrainer():
         weight_decay = self.config['optimizer']['weight_decay']
         exclude_bias_and_bn = self.config['optimizer']['exclude_bias_and_bn']
         parms = [self.model.online_network, self.model.predictor]
-        if self.config['model']['masknet']:
-            parms.append(self.model.masknet)
+        # if self.config['model']['masknet']:
+        #     parms.append(self.model.masknet)
         params = params_util.collect_params(parms,exclude_bias_and_bn=exclude_bias_and_bn)
         self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
 
@@ -197,10 +197,10 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target,pind,tind):
+    def forward_loss(self,*args,**kwargs):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
-        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target,pind,tind)
+        return self._forward_masked_byol_loss(*args,**kwargs)
 
     def _forward_new_hel_loss(self, preds, targets,masks):
         #NOT WORKING
@@ -256,14 +256,25 @@ class BYOLTrainer():
         zero = torch.tensor(0.0)
         return loss,zero,zero,loss,zero
 
-    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,pind,tind):
+    def _forward_masked_byol_loss(self, preds, targets,masks):
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         #breakpoint()
-        weights = masks.sum(dim=-1).detach()
-        mask_batch_size = masks.shape[0] // 2
+        mask1_c5,mask2_c5,mask1_c4,mask2_c4,mask1_c3,mask2_c3 = masks
+        C5_WEIGHT = 0.5
+        C4_WEIGHT = 0.3
+        C3_WEIGHT = 0.2
+        mask_c5 = torch.cat([mask1_c5, mask2_c5], dim=0) * C5_WEIGHT
+        mask_c4 = torch.cat([mask1_c4, mask2_c4], dim=0) * C4_WEIGHT
+        mask_c3 = torch.cat([mask1_c3, mask2_c3], dim=0) * C3_WEIGHT
+        weight_c5 = mask_c5.sum((-1,-2)) / 56**2
+        weight_c4 = mask_c4.sum((-1,-2)) / 56**2
+        weight_c3 = mask_c3.sum((-1,-2)) / 56**2
+        weights = torch.cat([weight_c5,weight_c4,weight_c3],dim=1)
+        mask_batch_size = weights.shape[0] // 2
         weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         weights = weights.repeat([2,1])
+
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
         inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
@@ -271,54 +282,7 @@ class BYOLTrainer():
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
             inv_loss = inv_loss.sum() / weights.sum()
-
-
-        bz,ch,emb = preds.shape
-        #breakpoint()
-        #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
-        p = F.softmax(preds, dim=-1) 
-        #p_log = F.log_softmax(preds, dim=-1)
-        #q = F.softmax(targets, dim=-1) 
-        n_f =  np.log(emb)
-        n_b = np.log(bz*ch)
-        #breakpoint()
-        eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
-        #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
-        #Numerical stable approximation
-        #r = p.mean(dim=(0,1)) #  emb 
-        #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
-        r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
-        eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
-        #log_r =  F.log_softmax(r_r,dim=-1) # emb
-        #eh_dist = -(xlogx(r)).sum()/ n_f
-        alpha = 0.5
-        
-        if True or self.masknet_on:
-            loss = inv_loss
-            return  loss,eh_obj,eh_dist,inv_loss,torch.tensor(0.0)
-        #mask_loss = self.cross_entrophy_loss(raw_mask,mask_target)
-        _,_,mh,mw = raw_mask.shape # B X C X H X W
-        raw_mask_norm = raw_mask.contiguous() #already normalized
-        n_target = torch.max(mask_target).item()+1
-        mask_target = to_binary_mask(mask_target,n_target,resize_to=(14,14)).contiguous()  # B XC X H X W
-        cosine_sim = torch.einsum('bcxy,bcij->bxyij',raw_mask_norm,raw_mask_norm) # B X H X W, or attention
-        same_object = torch.einsum('bcxy,bcij->bxyij',mask_target,mask_target) # B X H X W X I X J, or attention
-        tau = 0.1
-        logits = cosine_sim / tau 
-        logits = logits.view(-1,mh*mw,mh*mw)
-        same_object = same_object.view(-1,mh*mw,mh*mw)
-        same_object = F.normalize(same_object,dim=-1,p=1)
-        #mask_loss = self.cross_entrophy_loss(logits.detach().cpu(),same_object.detach().cpu())
-        mask_loss = -torch.sum(same_object * torch.nn.functional.log_softmax(logits,dim = -1), dim=-1).mean()
-        loss = inv_loss + alpha * mask_loss# standard BYOL
-        # alpha  = 0
-        # beta = 100
-        # theta = 1000
-        # loss = alpha * eh_obj + beta * eh_dist +theta * inv_loss
-        # loss /= (alpha+beta+theta)
-        #breakpoint()
-        #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
-        return loss,eh_obj,eh_dist,inv_loss,mask_loss
+        return inv_loss
  
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -352,18 +316,19 @@ class BYOLTrainer():
             # mask B X (3 Views) X (2 channels [intersection, SLIC]  ) X H X W
             input_masks = masks[:,:2,0,...].contiguous() # discard last mask,B X 2 X 224 X 224
             slic_labelmap = masks[:,2,1,...].contiguous() # B X 1 X H X W
-            full_view_prior_mask = masks[:,2,0,...].contiguous() # B X 1 X H X W
+            full_view_prior_masks = masks[:,2,1:,...].contiguous() # B X 4 X H X W
             # measure data loading time
             data_time.update(time.time() - end)
             #breakpoint()
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask)
+            #q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_masks)
+            pred,target,out_imgs,out_masks,all_masks = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_masks)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,pinds,tinds)
+            loss= self.forward_loss(pred,target,all_masks)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -393,11 +358,7 @@ class BYOLTrainer():
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
                     'mm': round(self.mm, 5),
                     'loss': round(loss_meter.val, 5),
-                    "eh_obj":round(eh_obj.item(),5),
-                    "eh_dist":round(eh_dist.item(),5),
-                    "inv_loss":round(inv_loss.item(),5),
-                    "mask_loss":round(mask_loss.item(),5),
-                    "num_segs":round(num_segs.item(),5),
+                    # "num_segs":round(num_segs.item(),5),
                     'Batch Time': round(batch_time.val, 5),
                     'Data Time': round(data_time.val, 5),
                     'Forward Time': round(forward_time.val, 5),
@@ -409,17 +370,7 @@ class BYOLTrainer():
 
                     # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
-
-
-                    img_mask = mask_target[0].detach().cpu()
-                    applied_mask = applied_mask[0].detach().cpu()
-
-                    view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
-                    mask_visual = raw_mask[0].permute(1,2,0) 
-                    mh,mw,mc = mask_visual.shape
-                    mask_visual = mask_visual.view(mh*mw,mc)
-                    mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    wandb_dump_img([view_raw,img_mask,mask_visual,applied_mask],"Masks")
+                    wandb_dump_img(out_imgs+out_masks,"Masks")
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
