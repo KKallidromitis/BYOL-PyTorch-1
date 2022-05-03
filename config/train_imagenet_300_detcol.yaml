@@ -1,6 +1,6 @@
 model:
   base_momentum: 0.99
-  masknet: true
+  masknet: false
   backbone:
     type: "resnet50"
     pretrained: false

@@ -200,48 +200,6 @@ class BYOLTrainer():
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
-
-    def _forward_new_hel_loss(self, preds, targets,masks):
-        #NOT WORKING
-        weights = masks.sum(dim=-1).detach()
-        mask_batch_size = masks.shape[0] // 2
-        weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
-        weights = torch.pow(weights,2) # loss by area ** 2
-        weights = weights.repeat([2,1])
-        #preds = F.normalize(preds, dim=-1) 
-        #targets = F.normalize(targets, dim=-1) 
-        bz,ch,emb = preds.shape
-        #breakpoint()
-        #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
-        p = F.softmax(preds, dim=-1) 
-        #p_log = F.log_softmax(preds, dim=-1)
-        q = F.softmax(targets, dim=-1) 
-        n_f =  np.log(emb)
-        n_b = np.log(bz*ch)
-        #breakpoint()
-        eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
-        #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
-        inv_loss = ((torch.sqrt(p)-torch.sqrt(q))**2).sum(dim=-1) * weights
-        if weights.sum() == 0:
-            inv_loss = 0
-        else:
-            inv_loss = inv_loss.sum() / weights.sum()
-        #Numerical stable approximation
-        #r = p.mean(dim=(0,1)) #  emb 
-        #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
-        r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
-        eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
-        #log_r =  F.log_softmax(r_r,dim=-1) # emb
-        #eh_dist = -(xlogx(r)).sum()/ n_f
-        loss = inv_loss # standard BYOL
-        # alpha  = 0
-        # beta = 100
-        # theta = 1000
-        # loss = alpha * eh_obj + beta * eh_dist +theta * inv_loss
-        # loss /= (alpha+beta+theta)
-        #breakpoint()
-        #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
-        return loss,eh_obj,eh_dist,inv_loss
     
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
         #import ipdb;ipdb.set_trace()
@@ -324,7 +282,7 @@ class BYOLTrainer():
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
-        use_masknet = epoch > 30
+        use_masknet = False # epoch > 30
         #breakpoint()
         while images is not None:
             i += 1
@@ -404,9 +362,9 @@ class BYOLTrainer():
                     view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     mask_visual = raw_mask[0].permute(1,2,0) 
                     mh,mw,mc = mask_visual.shape
-                    mask_visual = mask_visual.view(mh*mw,mc)
-                    mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    wandb_dump_img([view_raw,img_mask,mask_visual,applied_mask],"Masks")
+                    # mask_visual = mask_visual.view(mh*mw,mc)
+                    # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
+                    wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
