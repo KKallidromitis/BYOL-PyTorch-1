@@ -5,13 +5,21 @@ from torchvision import models
 import torch.nn.functional as F
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, layer_type="linear"):
         super().__init__()
+        
+        if layer_type == "linear":
+            self.l1 = nn.Linear(input_dim, hidden_dim)
+            self.l2 = nn.Linear(hidden_dim, output_dim)
+        elif layer_type == "conv":
+            self.l1 = nn.Conv2d(input_dim, hidden_dim, (1,1), stride=1, padding=0, bias=True)
+            self.l2 = nn.Conv2d(hidden_dim, output_dim, (1,1), stride=1, padding=0, bias=True)
+        else:
+            raise NotImplementedError()
 
-        self.l1 = nn.Linear(input_dim, hidden_dim)
+
         self.bn1 = nn.BatchNorm1d(hidden_dim)
         self.relu1 = nn.ReLU(inplace=True)
-        self.l2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x):
         x = self.l1(x)
@@ -33,13 +41,15 @@ class EncoderwithProjection(nn.Module):
         input_dim = config['model']['projection']['input_dim']
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+        self.projection_type = config["model"]["projection"]["layer"]
+        self.projection = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, layer_type=self.projection_type)
 
     def forward(self, x):
         x = self.encoder(x)
         x = F.adaptive_avg_pool2d(x, (1,1))
-        x = torch.flatten(x, 1)
-        x = self.projetion(x)
+        if self.projection_type == "linear": #Final output will be (B, 256), o.w. (B, 256, 1, 1)
+            x = torch.flatten(x, 1)
+        x = self.projection(x)
         return x
 
 class Predictor(nn.Module):
@@ -53,19 +63,6 @@ class Predictor(nn.Module):
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
     def forward(self, x):
+        if x.ndim == 4: #(B, C, 1, 1)
+            x = torch.flatten(x, 1) # (B, C)
         return self.predictor(x)
-
-def cosine_attention(dense_emb,global_emb):
-    '''
-    Computes cosine similarity between dense_emb and global_emb
-    Args:
-        dense_emb: (B, H, W, C)
-        global_emb: (B, C)
-    Returns
-        atten: (B, H, W)
-    '''
-    dense_emb = F.normalize(dense_emb,dim=-1)
-    global_emb = F.normalize(global_emb,dim=-1)
-    atten = torch.einsum('bhwc,bc->bhw',dense_emb, global_emb)
-    atten = F.relu(atten, inplace=True)
-    return atten

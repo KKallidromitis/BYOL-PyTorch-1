@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .basic_modules import EncoderwithProjection, Predictor, cosine_attention
+from .basic_modules import EncoderwithProjection, Predictor
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -31,36 +31,50 @@ class BYOLModel(torch.nn.Module):
         for param_q, param_k in zip(self.online_network.parameters(), self.target_network.parameters()):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
-    def forward(self, view1, view2, mm):
+    def forward(self, view1, view2, view0, mm):
 
-        online_encoder = self.online_network.encoder
-        online_projector = self.online_network.projetion
-
-        # Get Online Encoding
         b = view1.size(0)
-        online_encoding = online_encoder(torch.cat([view1, view2])) #(2B, 2048, 7, 7)
-        h, w = online_encoding.shape[2:] #(7, 7)
-        global_pooled = F.adaptive_avg_pool2d(online_encoding, (1,1)) #(2B, 2048, 1, 1)
-        online_encoding = torch.permute(online_encoding, (0,2,3,1)) #(2B, 7,7, 2048)
-        online_encoding = torch.flatten(online_encoding, 0, 2) #(2B*49, 2048)
-        global_pooled = torch.flatten(global_pooled, 1) #(2B, 2048)
 
-        dense_projection = online_projector(online_encoding) #(2B*49, 256)
-        global_projection = online_projector(global_pooled) # (2B, 256)
-        dense_v1, dense_v2 = dense_projection[:b*h*w], dense_projection[b*h*w:]  #(B*49, 256), (B*49, 256)
-        dense_v1, dense_v2 = torch.reshape(dense_v1, (b, h, w, -1)), torch.reshape(dense_v2, (b, h, w, -1)) #(B, 7, 7, 256), (B, 7, 7, 256)
-        global_v1, global_v2 = global_projection[:b], global_projection[b:] #(B, 256), (B, 256)
+        # Get online c5 outputs
+        online_c5_output = self.online_network.encoder(torch.cat([view1, view2, view0])) #(3B, 2048, 7, 7) in (view1, view2, view0) order in batch dim
+        online_v1, online_v2, online_v0 = online_c5_output[:b], online_c5_output[b:2*b], online_c5_output[2*b:]
+        h, w = online_v1.shape[-2:] #C5 output is always same (b/c view1, view2 shape is same)
 
-        atten_ab = cosine_attention(dense_v1, global_v2) #(B, H, W)
-        atten_ba = cosine_attention(dense_v2, global_v1) #(B, H, W)
+        # Compute similarity
+        if torch.linalg.norm(online_v0).item() < 1:
+            print(online_v0, torch.linalg.norm(online_v0))
 
-        q1 = torch.einsum("bhwc, bhw -> bc", dense_v1, atten_ab) #Use "attention weighted" dense projection (B, 256)
-        q2 = torch.einsum("bhwc,bhw -> bc", dense_v2, atten_ba) #(B, 256)
-        q = self.predictor(torch.cat([q1, q2])) #(2B, 256)
+        online_v0_normalized = F.normalize(online_v0, dim=1).clone().detach()
+        online_v1_normalized = F.normalize(online_v1, dim=1)
+        online_v2_normalized = F.normalize(online_v2, dim=1)
+        atten_ab = torch.einsum("bchw, bcij -> bhwij", online_v0_normalized, online_v1_normalized) # (B, 7,7, 7,7)
+        assert not torch.all(torch.isnan(atten_ab))
+        atten_ba = torch.einsum("bchw, bcij -> bhwij", online_v0_normalized, online_v2_normalized)
+        assert not torch.all(torch.isnan(atten_ab))
 
-        # Get target encodings
+        #Relu attention
+        atten_ab = F.relu(atten_ab.reshape((b, h, w, -1))) #(B, 7, 7, 49)
+        atten_ba = F.relu(atten_ba.reshape(b, h, w, -1)) #(B, 7, 7, 49)
+        atten_ab = atten_ab.reshape((b, h, w, h, w)) #(B, 7, 7, 7, 7)
+        atten_ba = atten_ba.reshape_as(atten_ab)
+
+        # Get values
+        online_projections = self.online_network.projection(torch.cat([online_v1, online_v2])) #(2B, 256, 7, 7) in (view1, view2) order
+        proj_v1, proj_v2 = online_projections[:b], online_projections[b:] #(B, 256, 7, 7)
+
+        # Get attention weighted values
+        g1 = torch.einsum("bhwij, bcij -> bchw", atten_ab, proj_v1) #(B, 256, 7, 7)
+        g2 = torch.einsum("bhwij, bcij -> bchw", atten_ba, proj_v2)
+        g1 = F.adaptive_avg_pool2d(g1, (1,1))
+        g2 = F.adaptive_avg_pool2d(g2, (1,1))
+
+        # Get predictions
+        q = self.predictor(torch.cat([g1,g2])) #(2B, 256) in (view1, view2) order 
+
+        # Get target predictions
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z = self.target_network(torch.cat([view2, view1], dim=0)).detach().clone() #(2B, 256)
+            target_z = self.target_network(torch.cat([view2, view1])) #(2B, 256, 1, 1) (view2, view1 order)
+            target_z = torch.flatten(target_z, 1) #(2B, 256)
         
-        return q, target_z
+        return q, target_z, atten_ab.view((b, h*w, h*w)), atten_ba.view((b, h*w, h*w))

@@ -20,6 +20,7 @@ from utils import params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from utils.visualize import wandb_dump_img
 
+
 class BYOLTrainer():
     def __init__(self, config):
         self.config = config
@@ -197,16 +198,21 @@ class BYOLTrainer():
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
+            view0 = images[:, 2, ...].contiguous()
             # measure data loading time
             data_time.update(time.time() - end)
 
             # forward
             tflag = time.time()
-            q, target_z,atten_ab,atten_ba = self.model(view1, view2, self.mm)
+            q, target_z, atten_ab, atten_ba = self.model(view1, view2, view0, mm=self.mm)
             
             if self.gpu == 0 and i==1:
-                wandb_dump_img([np.exp(view1[0].cpu().detach().permute(1,2,0)),np.exp(view2[0].cpu().detach().permute(1,2,0)),
-                atten_ab[0].cpu().detach(),atten_ba[0].cpu().detach()],'Alignment')
+                wandb_dump_img([np.exp(view0[0].cpu().detach().permute(1,2,0)),
+                                np.exp(view1[0].cpu().detach().permute(1,2,0)),
+                                np.exp(view2[0].cpu().detach().permute(1,2,0)),
+                                atten_ab[0].cpu().detach(),
+                                atten_ba[0].cpu().detach()],
+                                'Alignment')
             
             forward_time.update(time.time() - tflag)
 
@@ -244,7 +250,7 @@ class BYOLTrainer():
                     'Data Time': round(data_time.val, 5),
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
-                })
+                }, step=self.steps)
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
@@ -266,5 +272,5 @@ class BYOLTrainer():
                 'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
                 'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
                 'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
-            })
+            }, step=self.steps)
 
