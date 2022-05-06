@@ -4,6 +4,7 @@ import os
 from random import betavariate
 import time
 import datetime
+from black import E
 
 import numpy as np
 import torch
@@ -42,6 +43,7 @@ class BYOLTrainer():
         """get the train parameters!"""
         self.total_epochs = self.config['optimizer']['total_epochs']
         self.warmup_epochs = self.config['optimizer']['warmup_epochs']
+        self.overlap_indicator = self.config['data']['overlap_indicator']
 
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
@@ -205,9 +207,13 @@ class BYOLTrainer():
         #import ipdb;ipdb.set_trace()
         #breakpoint()
         #breakpoint()
+        zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
-        weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+        if self.overlap_indicator:
+            weights = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
+        else:
+            weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
@@ -218,54 +224,30 @@ class BYOLTrainer():
             inv_loss = inv_loss.sum() / weights.sum()
 
 
-        bz,ch,emb = preds.shape
-        #breakpoint()
-        #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
-        p = F.softmax(preds, dim=-1) 
-        #p_log = F.log_softmax(preds, dim=-1)
-        #q = F.softmax(targets, dim=-1) 
-        n_f =  np.log(emb)
-        n_b = np.log(bz*ch)
-        #breakpoint()
-        eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
-        #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
-        #Numerical stable approximation
-        #r = p.mean(dim=(0,1)) #  emb 
-        #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
-        r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
-        eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
-        #log_r =  F.log_softmax(r_r,dim=-1) # emb
-        #eh_dist = -(xlogx(r)).sum()/ n_f
-        alpha = 0.5
+        # bz,ch,emb = preds.shape
+        # #breakpoint()
+        # #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
+        # p = F.softmax(preds, dim=-1) 
+        # #p_log = F.log_softmax(preds, dim=-1)
+        # #q = F.softmax(targets, dim=-1) 
+        # n_f =  np.log(emb)
+        # n_b = np.log(bz*ch)
+        # #breakpoint()
+        # eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
+        # #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
+        # #Numerical stable approximation
+        # #r = p.mean(dim=(0,1)) #  emb 
+        # #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
+        # r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
+        # eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
+        # #log_r =  F.log_softmax(r_r,dim=-1) # emb
+        # #eh_dist = -(xlogx(r)).sum()/ n_f
+        # alpha = 0.5
         
-        if not self.masknet_on:
-            loss = inv_loss
-            return  loss,eh_obj,eh_dist,inv_loss,torch.tensor(0.0)
+    
+        return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0)
         #mask_loss = self.cross_entrophy_loss(raw_mask,mask_target)
-        _,_,mh,mw = raw_mask.shape # B X C X H X W
-        raw_mask_norm = raw_mask.contiguous() #already normalized
-        n_target = torch.max(mask_target).item()+1
-        mask_target = to_binary_mask(mask_target,n_target,resize_to=(14,14)).contiguous()  # B XC X H X W
-        cosine_sim = torch.einsum('bcxy,bcij->bxyij',raw_mask_norm,raw_mask_norm) # B X H X W, or attention
-        same_object = torch.einsum('bcxy,bcij->bxyij',mask_target,mask_target) # B X H X W X I X J, or attention
-        tau = 0.1
-        logits = cosine_sim / tau 
-        logits = logits.view(-1,mh*mw,mh*mw)
-        same_object = same_object.view(-1,mh*mw,mh*mw)
-        same_object = F.normalize(same_object,dim=-1,p=1)
-        #mask_loss = self.cross_entrophy_loss(logits.detach().cpu(),same_object.detach().cpu())
-        mask_loss = -torch.sum(same_object * torch.nn.functional.log_softmax(logits,dim = -1), dim=-1).mean()
-        mask_target
-        loss = inv_loss + alpha * mask_loss# standard BYOL
-        # alpha  = 0
-        # beta = 100
-        # theta = 1000
-        # loss = alpha * eh_obj + beta * eh_dist +theta * inv_loss
-        # loss /= (alpha+beta+theta)
-        #breakpoint()
-        #loss = 2 - 2 * (preds_norm * targets_norm).sum() / (16*bz) #Maybe add 16*b
-        return loss,eh_obj,eh_dist,inv_loss,mask_loss
- 
+  
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()

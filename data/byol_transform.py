@@ -30,11 +30,12 @@ def to_slic(img,**kwargs):
     return seg.view(1, h, w)
 
 class MultiViewDataInjector():
-    def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224):
+    def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224,slic_segments=100):
         self.transform_list = transform_list
         self.over_lap_mask = over_lap_mask
         self.crop_size = crop_size
         self.p = flip_p
+        self.slic_segments = slic_segments
         self.slic = True
 
     def _get_crop_box(self,image):
@@ -75,7 +76,7 @@ class MultiViewDataInjector():
         mask0 = torch.cat([mask0,torch.ones_like(mask0[:1])])
         mask1 = torch.cat([mask1,torch.ones_like(mask1[:1])])
         if self.slic:
-            super_pixel_id_map = to_slic(output2,n_segments=100) # SLIC GROUPING to 100 superpixels 1X H X W
+            super_pixel_id_map = to_slic(output2,n_segments=self.slic_segments) # SLIC GROUPING to 100 superpixels 1X H X W
             mask2 = torch.cat([mask2,super_pixel_id_map])
         else:
             mask2 = torch.cat([mask2,torch.ones_like(mask2[:1])])

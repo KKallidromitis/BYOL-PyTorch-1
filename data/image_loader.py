@@ -16,6 +16,7 @@ class ImageLoader():
         self.dual_views = config['data']['dual_views']
         self.mask_type = config['data']['mask_type']
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
+        self.slic_segments = config['data']['slic_segments']
 
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
@@ -46,7 +47,7 @@ class ImageLoader():
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform3 = get_transform('raw')
         #breakpoint()
-        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask)
+        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,self.slic_segments)
         
         dataset = SSLMaskDataset(image_dir,mask_file,transform=transform,mask_file_path=mask_file_path)
         return dataset

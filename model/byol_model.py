@@ -37,7 +37,7 @@ class BYOLModel(torch.nn.Module):
         self._initializes_target_network()
         self._fpn = None # not actual FPN, but pesudoname to get c4, TODO: Change the confusing name
         self.slic_only = True
-        self.n_kmeans = 64
+        self.n_kmeans = config['data']['n_kmeans']
         self.kmeans = KMeans(self.n_kmeans,)
         self.kmeans_gather = False # NOT TESTED
         self.rank = config['rank']
@@ -107,51 +107,52 @@ class BYOLModel(torch.nn.Module):
         assert im_size == 224
         idx = torch.LongTensor([1,0,3,2]).cuda()
         # Get spanning view embeddings
-        feats = self.fpn(raw_image)['c4']
+        with torch.no_grad():
+            feats = self.fpn(raw_image)['c4']
 
-        #mask pooling using superpixels
-        super_pixel = to_binary_mask(slic_mask,100,resize_to=(14,14))
-        pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
-        # do kemans
+            #mask pooling using superpixels
+            super_pixel = to_binary_mask(slic_mask,100,resize_to=(14,14))
+            pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
+            # do kemans
 
-        super_pixel_pooled = pooled.view(-1,1024).detach()
+            super_pixel_pooled = pooled.view(-1,1024).detach()
 
-        if self.kmeans_gather:
-            super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
-        else:
-            super_pixel_pooled_large = super_pixel_pooled
-        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
-        if self.kmeans_gather:
-            start_idx =  self.rank *b
-            end_idx = start_idx + b
-            labels = labels[start_idx:end_idx]
-        labels = labels.view(b,-1)
+            if self.kmeans_gather:
+                super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
+            else:
+                super_pixel_pooled_large = super_pixel_pooled
+            labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
+            if self.kmeans_gather:
+                start_idx =  self.rank *b
+                end_idx = start_idx + b
+                labels = labels[start_idx:end_idx]
+            labels = labels.view(b,-1)
 
-        # remap superpixel to pixels 
-        raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
+            # remap superpixel to pixels 
+            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
 
-        if user_masknet:
-            # USE hirearchl clustering on outputs of masknet
-            raw_masks = self.masknet(feats)
-            converted_idx = self.get_label_map(raw_masks)
-            converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
-        else:
-            raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
-            converted_idx = raw_mask_target
+            if user_masknet:
+                # USE hirearchl clustering on outputs of masknet
+                raw_masks = self.masknet(feats)
+                converted_idx = self.get_label_map(raw_masks)
+                converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
+            else:
+                raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
+                converted_idx = raw_mask_target
 
-        converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
-        #TODO: Move this to config, mask size before downsample
-        mask_dim = 56
-        #TODO: Move this to a separate method just as in selective search branch
-        rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-        rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-        flip_1 = roi_t[:,0,4]
-        flip_2 = roi_t[:,1,4]
-        aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
-        aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
-        mask_b,mask_c,h,w =aligned_1.shape
-        aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w)
-        aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w)
+            converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
+            #TODO: Move this to config, mask size before downsample
+            mask_dim = 56
+            #TODO: Move this to a separate method just as in selective search branch
+            rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+            rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+            flip_1 = roi_t[:,0,4]
+            flip_2 = roi_t[:,1,4]
+            aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
+            aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
+            mask_b,mask_c,h,w =aligned_1.shape
+            aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w)
+            aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w)
         # If this is on, only mask in intersetved area will be calculated
         
         if self.over_lap_mask:
