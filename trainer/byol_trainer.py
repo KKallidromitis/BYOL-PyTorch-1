@@ -10,7 +10,7 @@ import torch.backends.cudnn as cudnn
 
 from tensorboardX import SummaryWriter
 import apex
-import wandb
+#import wandb
 from apex.parallel import DistributedDataParallel as DDP
 from apex import amp
 
@@ -19,7 +19,7 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-from utils.visualize import wandb_dump_img
+#from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
 
 class BYOLTrainer():
@@ -83,8 +83,8 @@ class BYOLTrainer():
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         self.log_all = self.config['log']['log_all']
         self.cross_entrophy_loss = torch.nn.CrossEntropyLoss()
-        if self.gpu==0 or self.log_all:
-            wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
+        #if self.gpu==0 or self.log_all:
+        #    wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
         
         try:
             os.makedirs(save_dir)
@@ -290,7 +290,7 @@ class BYOLTrainer():
             #import ipdb;ipdb.set_trace()
             # Print log info
             if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
-                
+                '''
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
                 wandb.log({
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
@@ -306,6 +306,7 @@ class BYOLTrainer():
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
+                '''
                 if  (self.steps//self.log_step) % 5 == 1:
                     # img_mask = mask_target[0].detach().cpu()
                     # applied_mask = applied_mask[0].detach().cpu()
@@ -336,6 +337,7 @@ class BYOLTrainer():
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
             images, masks,diff_transfrom = prefetcher.next()
+            '''
         if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
             wandb.log({
@@ -345,4 +347,4 @@ class BYOLTrainer():
                 'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
                 'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
             })
-
+            '''

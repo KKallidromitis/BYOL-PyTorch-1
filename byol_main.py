@@ -3,7 +3,7 @@ import os
 import yaml
 import torch
 import torch.distributed as dist
-
+from pathlib import Path
 from trainer.byol_trainer import BYOLTrainer
 from utils import logging_util, distributed_utils
 import argparse
@@ -28,7 +28,7 @@ def run_task(config):
         config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
 
     trainer = BYOLTrainer(config)
-    rs = '/shared/jacklishufan/04_13_19-46_resnet50_300.pth.tar'
+    #rs = '/shared/jacklishufan/04_13_19-46_resnet50_300.pth.tar'
     rs = None
     trainer.resume_model(model_path=rs)
     start_epoch = trainer.start_epoch
@@ -41,8 +41,7 @@ def main():
     args = parser.parse_args()
     cfg = args.cfg if args.cfg[-5:] == '.yaml' else args.cfg + '.yaml'
     config_path = os.path.join(os.getcwd(), 'config', cfg)
-    assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
-    with open(config_path, 'r') as f:
+    with open(Path(Path(__file__).parent, 'config/train_imagenet_300.yaml'), 'r') as f:
         config = yaml.safe_load(f)
 
     if args.local_rank==0:
