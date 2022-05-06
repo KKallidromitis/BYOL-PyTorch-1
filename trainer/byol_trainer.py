@@ -44,6 +44,8 @@ class BYOLTrainer():
         self.total_epochs = self.config['optimizer']['total_epochs']
         self.warmup_epochs = self.config['optimizer']['warmup_epochs']
         self.overlap_indicator = self.config['data']['overlap_indicator']
+        self.use_weight = self.config['data']['weight']
+        
 
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
@@ -210,10 +212,12 @@ class BYOLTrainer():
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
-        if self.overlap_indicator:
-            weights = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
+        if self.use_weight:
+            weights =  (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         else:
-            weights = (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+            weights = torch.ones_like(weights[:mask_batch_size])
+        if self.overlap_indicator:
+            weights *= torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 

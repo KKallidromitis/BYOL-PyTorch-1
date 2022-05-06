@@ -78,8 +78,10 @@ def maskpool(mask,x):
     x = torch.matmul(mask.view(b,c_m,h*w).to('cuda'), x)
     return x,mask
 
-def to_binary_mask(label_map,c_m,resize_to=None):
+def to_binary_mask(label_map,c_m=-1,resize_to=None):
     b,h,w = label_map.shape
+    if c_m==-1:
+        c_m = torch.max(label_map).item()+1
     label_map_one_hot = F.one_hot(label_map,c_m).permute(0,3,1,2).float()
     if resize_to is not None:
         label_map_one_hot = F.interpolate(label_map_one_hot,resize_to, mode='bilinear',align_corners=False)

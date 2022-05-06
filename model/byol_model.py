@@ -38,7 +38,10 @@ class BYOLModel(torch.nn.Module):
         self._fpn = None # not actual FPN, but pesudoname to get c4, TODO: Change the confusing name
         self.slic_only = True
         self.n_kmeans = config['data']['n_kmeans']
-        self.kmeans = KMeans(self.n_kmeans,)
+        if self.n_kmeans < 9999:
+            self.kmeans = KMeans(self.n_kmeans,)
+        else:
+            self.kmeans = None
         self.kmeans_gather = False # NOT TESTED
         self.rank = config['rank']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
@@ -99,8 +102,34 @@ class BYOLModel(torch.nn.Module):
         labels = np.stack(labels)
         labels = torch.LongTensor(labels).cuda()
         return labels
-        
 
+    def do_kmeans(self,raw_image,slic_mask,user_masknet):
+        b = raw_image.shape[0]
+        feats = self.fpn(raw_image)['c4']
+        super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
+        pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
+        super_pixel_pooled = pooled.view(-1,1024).detach()
+        if self.kmeans_gather:
+            super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
+        else:
+            super_pixel_pooled_large = super_pixel_pooled
+        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
+        if self.kmeans_gather:
+            start_idx =  self.rank *b
+            end_idx = start_idx + b
+            labels = labels[start_idx:end_idx]
+        labels = labels.view(b,-1)
+        raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
+        if user_masknet:
+                # USE hirearchl clustering on outputs of masknet
+                raw_masks = self.masknet(feats)
+                converted_idx = self.get_label_map(raw_masks)
+                converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
+        else:
+                raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
+                converted_idx = raw_mask_target
+        converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
+        return converted_idx_b,converted_idx
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
@@ -108,39 +137,13 @@ class BYOLModel(torch.nn.Module):
         idx = torch.LongTensor([1,0,3,2]).cuda()
         # Get spanning view embeddings
         with torch.no_grad():
-            feats = self.fpn(raw_image)['c4']
-
-            #mask pooling using superpixels
-            super_pixel = to_binary_mask(slic_mask,100,resize_to=(14,14))
-            pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
-            # do kemans
-
-            super_pixel_pooled = pooled.view(-1,1024).detach()
-
-            if self.kmeans_gather:
-                super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
+            if self.n_kmeans < 9999:
+                converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
             else:
-                super_pixel_pooled_large = super_pixel_pooled
-            labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
-            if self.kmeans_gather:
-                start_idx =  self.rank *b
-                end_idx = start_idx + b
-                labels = labels[start_idx:end_idx]
-            labels = labels.view(b,-1)
-
-            # remap superpixel to pixels 
-            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
-
-            if user_masknet:
-                # USE hirearchl clustering on outputs of masknet
-                raw_masks = self.masknet(feats)
-                converted_idx = self.get_label_map(raw_masks)
-                converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
-            else:
-                raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
-                converted_idx = raw_mask_target
-
-            converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
+                converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
+                converted_idx = torch.argmax(converted_idx_b,1)
+            raw_masks = torch.ones(b,1,0,0).cuda()
+            raw_mask_target = converted_idx
             #TODO: Move this to config, mask size before downsample
             mask_dim = 56
             #TODO: Move this to a separate method just as in selective search branch
@@ -151,8 +154,8 @@ class BYOLModel(torch.nn.Module):
             aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
             aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
             mask_b,mask_c,h,w =aligned_1.shape
-            aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w)
-            aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w)
+            aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
+            aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()
         # If this is on, only mask in intersetved area will be calculated
         
         if self.over_lap_mask:
