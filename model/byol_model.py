@@ -1,7 +1,4 @@
 #-*- coding:utf-8 -*-
-from operator import imod
-from jax import mask
-from regex import B
 import torch
 from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
 from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool,refine_mask
@@ -37,6 +34,7 @@ class BYOLModel(torch.nn.Module):
         self._initializes_target_network()
         self._fpn = None # not actual FPN, but pesudoname to get c4, TODO: Change the confusing name
         self.slic_only = True
+        self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
         if self.n_kmeans < 9999:
             self.kmeans = KMeans(self.n_kmeans,)

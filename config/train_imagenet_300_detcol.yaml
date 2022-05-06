@@ -20,9 +20,9 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/jacklishufan/detconb/imagenet" #TODO: Change to match Japan Cluster
-  #image_dir: "/home/jacklishufan/ByteTrack/datasets/coco"
-  mask_type: "fh"
+  image_dir: "./imagenet" #TODO: Change to match Japan Cluster
+  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
+  mask_type: ""
   resize_size: 224 # src: 3.1
   data_workers: 8
   overlap_indicator: false 
@@ -33,8 +33,7 @@ data:
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
-  #num_examples: 118287
-  num_examples: 12000
+  num_examples: 1281167 #For imagenet1p, imagenet100, byol_trainer automatically updates num_examples accordingly
 
 optimizer:
   type: lars
@@ -62,5 +61,5 @@ log:
   log_all: False
 
 stage: "train"
-distributed: true
+distributed: True
 seed: 0

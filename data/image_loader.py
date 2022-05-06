@@ -17,6 +17,7 @@ class ImageLoader():
         self.mask_type = config['data']['mask_type']
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
         self.slic_segments = config['data']['slic_segments']
+        self.subset = config['data'].get("subset", "")
 
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
@@ -38,18 +39,22 @@ class ImageLoader():
         return data_loader
 
     def get_dataset(self, stage):
-        #import ipdb;ipdb.set_trace()
-        image_dir = os.path.join(self.image_dir,'images', f"{'train' if stage in ('train', 'ft') else 'val'}")
-        mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
-        mask_file_path = os.path.join(self.image_dir,'masks','train_tf')
+
+        image_dir = os.path.join(self.image_dir, "images", f"{'train' if stage in ('train', 'ft') else 'val'}")
+        if self.mask_type == "":
+            mask_file= None
+            mask_file_path = None #If we don't need to load we can avoid
+        else:
+            mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
+            mask_file_path = os.path.join(self.image_dir,'masks','train_tf')
         
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform3 = get_transform('raw')
-        #breakpoint()
+
         transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,self.slic_segments)
         
-        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform,mask_file_path=mask_file_path)
+        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform,mask_file_path=mask_file_path, subset=self.subset)
         return dataset
 
     def set_epoch(self, epoch):

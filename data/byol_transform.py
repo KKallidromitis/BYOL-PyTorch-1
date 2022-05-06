@@ -47,7 +47,7 @@ class MultiViewDataInjector():
         i2, j2, h2, w2 = self._get_crop_box(sample)
         do_flip1 = torch.rand(1) < self.p
         do_flip2 = torch.rand(1) < self.p
-        #assert i1 != i2, f"{(i1, j1, h1, w1)}!={i2, j2, h2, w2}"
+
         i_min = max(i1,i2)
         i_max = min(i1+h1,i2+h2)
         j_min = max(j1,j2)
@@ -55,20 +55,14 @@ class MultiViewDataInjector():
         h = i_max-i_min
         w = j_max-j_min
         area = h * w if h > 0 and w > 0 else 0
-        # assert h > 0 
-        # assert w > 0
-        # print((i1, j1, h1, w1),(i2, j2, h2, w2))
-        # assert area > 0 # Must postive intersection area between views
-        #assert()
-        #breakpoint()
+
         if self.over_lap_mask:
             intersect_masks = torch.zeros_like(mask)
             if area > 0:
                 intersect_masks[:,i_min:i_max,j_min:j_max] = 1
-            #breakpoint()
+
             mask = intersect_masks * mask
-        #print(mask.shape)
-        #assert mask.sum() > 0
+
         assert len(self.transform_list) == 3
         output0,mask0 = self.transform_list[0](sample,mask,(i1, j1, h1, w1),do_flip1)
         output1,mask1 = self.transform_list[1](sample,mask,(i2, j2, h2, w2),do_flip2)
@@ -81,6 +75,7 @@ class MultiViewDataInjector():
         else:
             mask2 = torch.cat([mask2,torch.ones_like(mask2[:1])])
         output_cat = torch.stack([output0,output1,output2], dim=0)
+
         #Hard code pipeline for generate mask for encoder
         transform1 = [i1,j1,i1+h1,j1+w1,do_flip1]
         transform2 = [i2,j2,i2+h2,j2+w2,do_flip2]
@@ -92,22 +87,37 @@ class MultiViewDataInjector():
         return output_cat,mask_cat,transforms
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=''):
+    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=None, subset=""):
         self.root = root
         self.transform = transform
-        #self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
-        with open('1percent.txt') as f:
-            samples = f.readlines()
-            samples = [x.replace('\n','').strip() for x in samples ]
-            samples = [x for x in samples if x]
-            samples = [(os.path.join(root,x.split('_')[0],x),None) for x in samples]
-            #samples = [x for x in samples if os.path.exists(x[0])]
-           
-            print("total files:",len(samples))
-            self.samples = sorted(samples)
+        if subset == "":
+            self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
+        else:
+            if subset not in ["imagenet1p", "imagenet100"]:
+                raise NotImplementedError()
+            
+            if subset == "imagenet1p":
+                with open('1percent.txt') as f:
+                    samples = f.readlines()
+                    samples = [x.replace('\n','').strip() for x in samples ]
+                    samples = [x for x in samples if x]
+                    samples = [(os.path.join(root,x.split('_')[0],x),None) for x in samples]
+                    #samples = [x for x in samples if os.path.exists(x[0])]
+                    self.samples = sorted(samples)
+                    
+            elif subset == "imagenet100":
+                with open("imagenet100.txt") as f:
+                    subset_classes = f.read().splitlines()
+                assert len(subset_classes) == 100
+                samples = []
+                for c in subset_classes:
+                    samples.extend([(os.path.join(root, c, f), None) for f in os.listdir(os.path.join(root, c))])
+                self.samples = samples
+
         self.loader = default_loader
-        self.img_to_mask = self._get_masks(mask_file)
         self.mask_file_path = mask_file_path
+        if mask_file:
+            self.img_to_mask = self._get_masks(mask_file)
 
     def _get_masks(self, mask_file):
         with open(mask_file, "rb") as file:
@@ -120,11 +130,14 @@ class SSLMaskDataset(VisionDataset):
         sample = self.loader(path)
         
         # Load Mask
-        mask_file_name = self.img_to_mask[index].split('/')[-1]
-        mask_file_path = os.path.join(self.mask_file_path,mask_file_name)
-        with open(mask_file_path, "rb") as file:
-            mask = pickle.load(file)
-            mask += 1 # no zero, reserved for nothing
+        if self.mask_file_path is None:
+            mask = torch.from_numpy(np.zeros(sample.size, dtype=np.bool))
+        else:
+            mask_file_name = self.img_to_mask[index].split('/')[-1]
+            mask_file_path = os.path.join(self.mask_file_path,mask_file_name)
+            with open(mask_file_path, "rb") as file:
+                mask = pickle.load(file)
+                mask += 1 # no zero, reserved for nothing
         # Apply transforms
         if self.transform is not None:
             sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0))
