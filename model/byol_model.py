@@ -1,7 +1,4 @@
 #-*- coding:utf-8 -*-
-from operator import imod
-from jax import mask
-from regex import B
 import torch
 from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
 from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool,refine_mask
@@ -37,6 +34,7 @@ class BYOLModel(torch.nn.Module):
         self._initializes_target_network()
         self._fpn = None # not actual FPN, but pesudoname to get c4, TODO: Change the confusing name
         self.slic_only = True
+        self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
         self.kmeans = KMeans(self.n_kmeans,)
         self.kmeans_gather = False # NOT TESTED
@@ -111,7 +109,7 @@ class BYOLModel(torch.nn.Module):
             feats = self.fpn(raw_image)['c4']
 
             #mask pooling using superpixels
-            super_pixel = to_binary_mask(slic_mask,100,resize_to=(14,14))
+            super_pixel = to_binary_mask(slic_mask.long(),self.slic_segments,resize_to=(14,14))
             pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
             # do kemans
 
@@ -129,7 +127,7 @@ class BYOLModel(torch.nn.Module):
             labels = labels.view(b,-1)
 
             # remap superpixel to pixels 
-            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,100,(56,56)) ,labels).sum(1).long().detach()
+            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask.long(),self.slic_segments,(56,56)) ,labels).sum(1).long().detach()
 
             if user_masknet:
                 # USE hirearchl clustering on outputs of masknet

@@ -1,11 +1,8 @@
 #-*- coding:utf-8 -*-
-from math import gamma
+# from math import gamma
 import os
-from random import betavariate
 import time
 import datetime
-from black import E
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -22,8 +19,6 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-from utils.mask_utils import to_binary_mask
-from utils.math import xlogx
 from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
 
@@ -50,6 +45,11 @@ class BYOLTrainer():
         self.global_batch_size = self.world_size * self.train_batch_size
 
         self.num_examples = self.config['data']['num_examples']
+        subset = self.config['data'].get("subset", "") #Update num_examples for subsets
+        if subset == "imagenet100":
+            self.num_examples = 126689
+        elif subset == "imagenet1p":
+            self.num_examples = 12811
         self.warmup_steps = self.warmup_epochs * self.num_examples // self.global_batch_size
         self.total_steps = self.total_epochs * self.num_examples // self.global_batch_size
 
@@ -199,14 +199,9 @@ class BYOLTrainer():
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
     def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
-        #import ipdb;ipdb.set_trace()
-        #breakpoint()
         return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
     
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
-        #import ipdb;ipdb.set_trace()
-        #breakpoint()
-        #breakpoint()
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
@@ -221,33 +216,10 @@ class BYOLTrainer():
         if weights.sum() == 0:
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
-            inv_loss = inv_loss.sum() / weights.sum()
-
-
-        # bz,ch,emb = preds.shape
-        # #breakpoint()
-        # #loss = 2 - 2 * (preds * targets).sum() / (16*bz)
-        # p = F.softmax(preds, dim=-1) 
-        # #p_log = F.log_softmax(preds, dim=-1)
-        # #q = F.softmax(targets, dim=-1) 
-        # n_f =  np.log(emb)
-        # n_b = np.log(bz*ch)
-        # #breakpoint()
-        # eh_obj = -(xlogx(p)).sum(dim=-1).mean() / n_f # B X C X emb -> B X C -> 1, object class entrophy
-        # #inv_loss =2 - 2 * ((preds * targets).sum(dim=-1) * weights ).mean() # H(p,q)^2
-        # #Numerical stable approximation
-        # #r = p.mean(dim=(0,1)) #  emb 
-        # #r = torch.softmax(preds.reshape(bz*ch,emb), dim=0) # BC * emb
-        # r = F.normalize(p.reshape(bz*ch,emb),p=1,dim=0)
-        # eh_dist = -(xlogx(r)).sum(dim=0).mean() / n_b
-        # #log_r =  F.log_softmax(r_r,dim=-1) # emb
-        # #eh_dist = -(xlogx(r)).sum()/ n_f
-        # alpha = 0.5
-        
+            inv_loss = inv_loss.sum() / weights.sum()        
     
         return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0)
-        #mask_loss = self.cross_entrophy_loss(raw_mask,mask_target)
-  
+
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()
