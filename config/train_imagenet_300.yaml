@@ -21,7 +21,7 @@ amp:
 
 data:
   image_dir: "/home/acb11129ts/workspace/ssl/BYOL-PyTorch-master/dataset/imagenet/" #TODO: Change to match Japan Cluster
-  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
+  subset: "imagenet" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
   data_workers: 24
@@ -33,7 +33,7 @@ data:
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
-  num_examples: 12811 #1281167 #For imagenet1p, imagenet100, byol_trainer automatically updates num_examples accordingly
+  num_examples: 1281167 #For imagenet1p, imagenet100, byol_trainer automatically updates num_examples accordingly
 
 optimizer:
   type: lars
