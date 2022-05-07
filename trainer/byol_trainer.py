@@ -207,13 +207,12 @@ class BYOLTrainer():
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
-        mask_exists = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
         if self.use_weight:
             weights =  (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         else:
             weights = torch.ones_like(weights[:mask_batch_size])
         if self.overlap_indicator:
-            weights *= mask_exists
+            weights *= torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
@@ -324,7 +323,7 @@ class BYOLTrainer():
                     mh,mw,mc = mask_visual.shape
                     # mask_visual = mask_visual.view(mh*mw,mc)
                     # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+                    wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'

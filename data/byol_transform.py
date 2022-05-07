@@ -97,7 +97,7 @@ class SSLMaskDataset(VisionDataset):
                 raise NotImplementedError()
             
             if subset == "imagenet1p":
-                with open('/home/acb11129ts/workspace/ssl/detconb-indicator-0506/1percent.txt') as f:
+                with open('1percent.txt') as f:
                     samples = f.readlines()
                     samples = [x.replace('\n','').strip() for x in samples ]
                     samples = [x for x in samples if x]
@@ -106,7 +106,7 @@ class SSLMaskDataset(VisionDataset):
                     self.samples = sorted(samples)
                     
             elif subset == "imagenet100":
-                with open("/home/acb11129ts/workspace/ssl/detconb-indicator-0506/imagenet100.txt") as f:
+                with open("imagenet100.txt") as f:
                     subset_classes = f.read().splitlines()
                 assert len(subset_classes) == 100
                 samples = []
