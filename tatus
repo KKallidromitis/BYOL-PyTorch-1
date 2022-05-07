@@ -1,0 +1,107 @@
+[33m6fc16f9[m[33m ([m[1;36mHEAD -> [m[1;32mindicator_cluster[m[33m)[m corrected weights
+[33m8e80861[m init changes
+[33meacb60f[m[33m ([m[1;31morigin/indicator[m[33m)[m merge changes
+[33mcf711b6[m separate config for weight and indicator
+[33m0da3f72[m Adding ImageNet100, Fixing Ablation bug
+[33m91c7d3c[m add indicator and kmeans, slic to config
+[33m6380877[m[33m ([m[1;31morigin/superpixel_kmeans[m[33m)[m cleanup codes
+[33mef8a519[m[33m ([m[1;31morigin/shufanbyol[m[33m)[m add new forawrd
+[33ma42ae09[m masknet-superpixel
+[33m7e6f478[m push superpixel
+[33mdb4a3ec[m attemps to fix mask collapse
+[33m50aee15[m move masknet before views, and moving all crop and clip to ROI Align
+[33mdd0a064[m working old attention checkpoint
+[33mf42179d[m spatial attention checkpoint
+[33mb3eb795[m optimized GPU memory
+[33mc66c088[m fixed SSL dataset
+[33m77f935b[m update config
+[33md665e49[m fix batch size
+[33m6e734e1[m add overlap mask as a config option
+[33m096a637[m mask fix
+[33m1a12c20[m update masks
+[33m5eaffcd[m fix permute
+[33mf27af02[m initial detcon with byol loss
+[33m25ad599[m add coco gt pipeline
+[33mc46c74f[m updated online masknet
+[33me48a647[m ignore logs
+[33m5b5dca1[m Delete logs directory
+[33mb5647b4[m added masknet online net
+[33mf6bd13d[m Closing wandb only for mp case
+[33m4116489[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33mb5edb0f[m Closing wandb at end
+[33m7634f0a[m add --mini-test flag for eval
+[33m517fa0a[m Fixing batch-size typo
+[33me0692cf[m Fixing README
+[33maa5eba5[m Fixing train size, README in main_lincls
+[33m64388c2[m Updating Batch-Size in Readme for LinearEval
+[33m5414721[m updated readme
+[33mcc3c396[m small comment reminder
+[33m00aee18[m generate imagenet 1p
+[33m3f4be3b[m fixed gather
+[33meb8ed0b[m Adding log reading code
+[33me3e55cd[m Adding log plotting to notebook
+[33m9921522[m added timestamp to ckpt names
+[33m5dc519b[m added cuda to lars
+[33madd7ed9[m fixing piecewise schedule (elif instead of if)
+[33mb594345[m Fixing piecewise lr
+[33m3183672[m Fixing bug in lr schedule delta computation
+[33m26ba4c2[m Using exact deepmind schedule. Can discuss fp precision
+[33mc49f789[m Fixing LR schedule precision.
+[33m43f6358[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33m4907116[m Adding schedule comparision in notebook
+[33m38ba879[m fix double type issue
+[33m05a91af[m Updating COCO hyperparam in config
+[33m71058ea[m fixed opt
+[33mba8c0ad[m added lr type
+[33m81de0f0[m renaming README
+[33m186f4f1[m Adding config arg to byol_main.py
+[33m5a1c047[m Adding seed set in byol trainer
+[33mcc42958[m Update train_config_imagenet_300.yaml
+[33maf749e5[m Fix LARSGD momentum, data size and path
+[33m4c0addd[m fix warmup
+[33m4ea396d[m fix learning rate normalization in LARS and added config for Imagenet
+[33mc49d382[m update config to fix the warmup_epochs
+[33m92b6add[m Adding BYOL linear eval LRas default for linear evaluation learning rate.
+[33m901ad8c[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33m7c01de4[m Adding Seed fixing
+[33m90cac1c[m changed momentum
+[33md688079[m rolledback loader
+[33md8d17b8[m fixed coder
+[33m63913e8[m Merge branch 'master' of github.com:KKallidromitis/detconb
+[33m32560fe[m add mmseg
+[33me0457b9[m added gen_masks_tf
+[33m108df30[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33me6b9b3c[m Fixing sanity_check and wandb init
+[33m7c9520e[m Update README.md
+[33me76b2ac[m Update README.md
+[33mc35ae70[m Adding linear eval script
+[33md1e329b[m Adding DataParallel
+[33mba22f7b[m Adding official BYOL eval script
+[33m27b5852[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33m1d97cce[m added gather
+[33m5ef0ad7[m Adding code for img pkl
+[33mb99cc85[m changed the augumentation and batch size according to the Detcon paper
+[33mb335797[m[33m ([m[1;31morigin/pre_gather[m[33m)[m fixed -1 loss
+[33mec11686[m Cleaning up config (lots of repetition maskrcnn yaml)
+[33mb458948[m Fixing FRCNN Box Head dim
+[33m197b7b5[m Fixing gamma error
+[33m4b8a205[m Fixing config typos
+[33me683784[m Adding instance seg capability to DatasetMapper
+[33m521c40d[m Added COCO Detcon Eval from Pretrained Weights
+[33mb2f4c99[m Update README.md
+[33mbe6aaf3[m Moving linear eval notebook into eval dir
+[33m64e7514[m Adding COCO eval
+[33mc93cb22[m rollback
+[33mba88ed1[m reverting local changes being pushed
+[33ma393bd0[m Adding COCO eval
+[33m059a7a2[m binary masks outside of basic modules
+[33mdc50d35[m seperate maskids
+[33m55e0247[m Adding eval ipynb
+[33m37e62fe[m one mask_ids
+[33m6e63355[m seperate mask_ids
+[33mcc85da7[m added wandb
+[33m1fcd768[m fixed ckpt dir
+[33m0e2734c[m Merge branch 'master' of https://github.com/KKallidromitis/detconb
+[33m33dca15[m detcondb initial
+[33m3dd3b2d[m detcondb initial
+[33medefc01[m init
