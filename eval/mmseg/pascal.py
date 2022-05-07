@@ -1,8 +1,9 @@
 norm_cfg = dict(type='SyncBN', requires_grad=True)
+fname = './superpixel-only-indicator.pth' # Change this to file path, no need to tocuh anything else
 model = dict(
     type='EncoderDecoder',
-    #pretrained='./byol_res50_fcn_pretrained.pth',
-    pretrained = 'torchvision://resnet50',
+    pretrained=fname,
+    #pretrained = 'torchvision://resnet50',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -28,7 +29,7 @@ model = dict(
         align_corners=False,
         loss_decode=dict(
             type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0)),
-    auxiliary_head=None, # drop aux head
+    auxiliary_head=None,
     # dict(
     #     type='FCNHead',
     #     in_channels=1024,
@@ -173,14 +174,14 @@ load_from = None
 resume_from = None
 workflow = [('train', 1)]
 cudnn_benchmark = True
-optimizer = dict(type='SGD', lr=0.003, momentum=0.9, weight_decay=1e-4)
+optimizer = dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=1e-4)
 optimizer_config = dict()
 #lr_config = dict(policy='poly', power=0.9, min_lr=0.0001, by_epoch=False)
 lr_config = dict(policy="step", step=[21000, 27000])
 #runner = dict(type='IterBasedRunner', max_iters=20000)
 runner = dict(type="IterBasedRunner", max_iters=30000) #epoch based runner for 45
-checkpoint_config = dict(by_epoch=False, interval=2000)
+checkpoint_config = dict(by_epoch=False, interval=2000000000)
 evaluation = dict(interval=2000, metric='mIoU', pre_eval=True,by_epoch=False)
-work_dir = './work_dirs/fcn_r50-d8_512x512_modified_sup_moco_no_aux_voc12aug'
-gpu_ids = range(0, 8)
+work_dir = f'./work_dirs/{ fname.replace("./","").replace(".pth","") }'
+gpu_ids = range(0, 4)
 auto_resume = False
