@@ -3,7 +3,7 @@ import os
 import yaml
 import torch
 import torch.distributed as dist
-
+from pathlib import Path
 from trainer.byol_trainer import BYOLTrainer
 from utils import logging_util, distributed_utils
 import argparse
@@ -39,8 +39,7 @@ def main():
     args = parser.parse_args()
     cfg = args.cfg if args.cfg[-5:] == '.yaml' else args.cfg + '.yaml'
     config_path = os.path.join(os.getcwd(), 'config', cfg)
-    assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
-    with open(config_path, 'r') as f:
+    with open(Path(Path(__file__).parent, 'config/train_imagenet_300.yaml'), 'r') as f:
         config = yaml.safe_load(f)
 
     if args.local_rank==0:
