@@ -2,7 +2,6 @@
 import torch
 from .basic_modules import EncoderwithProjection, Predictor
 from utils.mask_utils import convert_binary_mask
-from utils.visualize_masks import wandb_set
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -38,13 +37,7 @@ class BYOLModel(torch.nn.Module):
         #import ipdb;ipdb.set_trace()
         
         masks = torch.cat([ masks[:,i,:,:,:] for i in range(masks.shape[1])])
-        
-        if wandb_id!=None:  
-            wandb_set(view1[wandb_id].permute(1,2,0).detach().cpu().numpy(),
-                      view2[wandb_id].permute(1,2,0).detach().cpu().numpy(),'views')
-            wandb_set(masks[wandb_id].squeeze().detach().cpu().numpy(),
-                      masks[wandb_id+self.train_batch_size].squeeze().detach().cpu().numpy(),'fh_masks')
-            
+          
         masks = convert_binary_mask(masks,pool_size = self.pool_size)
         q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks,wandb_id,'online'))
 

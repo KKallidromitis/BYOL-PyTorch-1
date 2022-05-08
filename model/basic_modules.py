@@ -5,7 +5,6 @@ import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
-from utils.visualize_masks import wandb_sample
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -162,17 +161,6 @@ class EncoderwithProjection(nn.Module):
             
         masks,mask_ids = sample_masks(masks,self.mask_rois)
 
-        if wandb_id!=None:
-            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),
-                         torch.reshape(masks[wandb_id+self.train_batch_size],
-                                       (self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),'sample_masks_'+net_type)
-            
-        if wandb_id!=None:
-            wandb_sample(torch.reshape(masks[wandb_id],(self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),
-                 torch.reshape(masks[wandb_id+self.train_batch_size],
-                               (self.mask_rois,self.pool_size,self.pool_size)).detach().cpu().numpy(),'masknet_masks_'+net_type)
-        
-        
         # Detcon mask multiply
         bs, emb, emb_x, emb_y  = x.shape
         x = x.permute(0,2,3,1) #(B, pool_size, pool_size, 2048)
