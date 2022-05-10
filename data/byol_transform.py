@@ -36,7 +36,7 @@ class MultiViewDataInjector():
         self.crop_size = crop_size
         self.p = flip_p
         self.slic_segments = slic_segments
-        self.slic = True
+        self.slic = False
 
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))

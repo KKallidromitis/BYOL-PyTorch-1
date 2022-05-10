@@ -21,6 +21,7 @@ from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
+from utils.ssn_lib.utils.loss import reconstruct_loss_with_cross_etnropy,reconstruct_loss_with_mse
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -200,10 +201,16 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
-        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
+    def forward_loss(self, *args):
+        return self._forward_masked_byol_loss(*args)
     
-    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
+
+    def mask_loss(self,Q,H,coords,raw_image):
+        compactness_loss = reconstruct_loss_with_mse(Q, coords.reshape(*coords.shape[:2], -1), H)
+        recons_loss = reconstruct_loss_with_mse(Q, F.interpolate(raw_image,56).flatten(-2,-1))
+        return 1e-5 * compactness_loss + recons_loss
+    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,Q,H,coords,raw_image):
+        
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
@@ -222,8 +229,9 @@ class BYOLTrainer():
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
             inv_loss = inv_loss.sum() / weights.sum()        
-    
-        return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0)
+        mask_loss = self.mask_loss(Q,H,coords,raw_image)
+        loss = inv_loss + mask_loss
+        return  inv_loss + mask_loss,zero,zero,inv_loss,mask_loss
 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -263,11 +271,11 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask)
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask,Q,H,coords = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,Q,H,coords,view_raw)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':

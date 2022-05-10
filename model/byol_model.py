@@ -1,6 +1,6 @@
 #-*- coding:utf-8 -*-
 import torch
-from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
+from .basic_modules import EncoderwithProjection, upsample_cat,SSNMaskNet,FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet, upsample_cat
 from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool,refine_mask
 from torchvision import ops
 import torch.nn.functional as F
@@ -27,7 +27,7 @@ class BYOLModel(torch.nn.Module):
         
         self.masknet_on = config['model']['masknet']
         if self.masknet_on:
-            self.masknet = FCNMaskNetV2()
+            self.masknet = SSNMaskNet()
         # predictor
         self.predictor = Predictor(config)
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
@@ -69,7 +69,8 @@ class BYOLModel(torch.nn.Module):
         if self._fpn:
             return self._fpn
         else:
-            self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
+            return_layers = {'7':'out','6':'c4','5':'c3','4':'c2'}
+            self._fpn = IntermediateLayerGetter(self.online_network.encoder, return_layers)
             return self._fpn
             
     def handle_flip(self,aligned_mask,flip):
@@ -128,6 +129,18 @@ class BYOLModel(torch.nn.Module):
                 converted_idx = raw_mask_target
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
         return converted_idx_b,converted_idx
+
+    def ssn(self,raw_image):
+        b = raw_image.shape[0]
+        feats = self.fpn(raw_image)
+        feats = upsample_cat(feats)
+        height, width = feats.shape[-2:]
+        coords = torch.stack(torch.meshgrid(torch.arange(height, device='cuda'), torch.arange(width, device='cuda')), 0)
+        coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
+        feats = torch.cat([feats, coords], 1)
+        Q, H, feats = self.masknet(feats)
+        return Q, H,coords
+        
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
@@ -137,6 +150,13 @@ class BYOLModel(torch.nn.Module):
         with torch.no_grad():
             if self.n_kmeans < 9999:
                 converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
+            elif self.masknet_on:
+                Q,H,coords = self.ssn(raw_image)
+                # Q: B X N_SLIC X (56 X 56)
+                b,c,_ = Q.shape
+                # loss calc
+                converted_idx_b = Q.reshape(b,c,56,56)
+                converted_idx = torch.argmax(converted_idx_b,1)
             else:
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
@@ -174,5 +194,5 @@ class BYOLModel(torch.nn.Module):
             target_z = target_z.detach().clone()
         
 
-        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx,Q,H,coords
 

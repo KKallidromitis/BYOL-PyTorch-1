@@ -6,6 +6,7 @@ from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
 import numpy as np
+from utils.ssn_lib.ssn.ssn import ssn_iter
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -155,6 +156,33 @@ class FCNMaskNet(nn.Module):
         return x
 
 
+def upsample_cat(feats):
+    c2 = feats['c2']
+    c3 = F.interpolate(feats['c3'],56)
+    c4 = F.interpolate(feats['c4'],56)
+    c5 = F.interpolate(feats['out'],56)
+    return torch.cat([c2,c3,c4,c5],dim=1)
+
+class SSNMaskNet(nn.Module):
+    def __init__(self,attention=False,upsample=56):
+        super().__init__()
+        self.projection = nn.Sequential(
+            nn.Conv2d(3840+2,256,1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(256,32,1)
+        )
+    
+    def forward(self,x):
+        #x = upsample_cat(x) # B X 3840+2 X 56 X 56
+        #x = x.permute(0,2,3,1)
+        x = self.projection(x) # B X 32 X  56 X 56
+        #x = x.permute(0,3,1,2)
+        #breakpoint()
+        Q, H, feat = ssn_iter(x,100,5)
+        return Q,H,feat
+        
+        
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
