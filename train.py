@@ -1,18 +1,21 @@
-#!/usr/bin/env python
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-
-import copy
-import os
-import torch
-import numpy as np
-from detectron2.checkpoint import DetectionCheckpointer
+import random
+from detectron2.data import DatasetCatalog, MetadataCatalog
+from detectron2.data.datasets import register_coco_instances
+from detectron2.evaluation import inference_context,COCOEvaluator
+from detectron2.engine import DefaultTrainer, DefaultPredictor
 from detectron2.config import get_cfg
-from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch
-from detectron2.evaluation import COCOEvaluator
-
-from detectron2.data import DatasetMapper, build_detection_test_loader, build_detection_train_loader
-from detectron2.data import detection_utils as utils
+from detectron2 import model_zoo
+import os
+from detectron2.data.datasets import register_coco_instances
+from detectron2.engine import DefaultTrainer,launch
+from detectron2.config import get_cfg
+from detectron2 import model_zoo
+import os
+#from trainer import *
+import numpy as np
 from detectron2.data import transforms as T
+from detectron2.data import DatasetMapper, build_detection_test_loader, build_detection_train_loader
+#longest side transform 
 
 class LongestSideRandomScale(T.Augmentation):
 
@@ -37,6 +40,19 @@ class LongestSideRandomScale(T.Augmentation):
             new_h, new_w = new_short,new_long
         return T.ResizeTransform(old_h, old_w, new_h, new_w)
 
+
+class EvalPadding(T.Augmentation):
+    def __init__(self,target_size=1024):
+        self.target_size = target_size
+        super().__init__()
+
+    def get_transform(self, image):
+        old_h, old_w = image.shape[:2]
+        assert old_h == self.target_size or old_w == self.target_size
+        delta_a = self.target_size - old_h
+        delta_b = self.target_size - old_w
+        return T.PadTransform(old_h, old_w, new_h, new_w)
+
 class Trainer(DefaultTrainer):
     @classmethod
     def build_train_loader(cls, cfg):
@@ -52,10 +68,10 @@ class Trainer(DefaultTrainer):
     def build_test_loader(cls, cfg, dataset_name):
         # TODO: Ask about detcon specific data aug (rn, using approximations)
         test_augs = [
-                        LongestSideRandomScale(1, 1, 1024),
-                        T.FixedSizeCrop((1024, 1024)) #During testing, images are resized to 1024 pixels on the longest side then padded to 1024×1024 pixels.
+                        LongestSideRandomScale(1, 1, 1024), #During testing, images are resized to 1024 pixels on the longest side then padded to 1024×1024 pixels.
+                        #T.FixedSizeCrop((1024, 1024)) #somewhat buggy, so remove now
                     ]
-        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False, augmentations=test_augs, use_instance_mask=True))
+        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, True, augmentations=test_augs, use_instance_mask=True))
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
@@ -63,39 +79,14 @@ class Trainer(DefaultTrainer):
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         return COCOEvaluator(dataset_name, cfg, True, output_folder)
 
-def setup(args):
+def main_train():
+    #torch.multiprocessing.freeze_support()
     cfg = get_cfg()
-    cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
-    cfg.freeze()
-    default_setup(cfg, args)
-    return cfg
-
-
-def main(args):
-    cfg = setup(args)
-
-    if args.eval_only:
-        model = Trainer.build_model(cfg)
-        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-            cfg.MODEL.WEIGHTS, resume=args.resume
-        )
-        res = Trainer.test(cfg, model)
-        return res
-
-    trainer = Trainer(cfg)
-    trainer.resume_or_load(resume=args.resume)
+    #cfg.merge_from_file(model_zoo.get_config_file("COCO-InstanceSegmentation/mask_rcnn_R_50_FPN_3x.yaml"))
+    cfg.merge_from_file("./config.yaml")
+    trainer = Trainer(cfg) 
+    trainer.resume_or_load(resume=True)
     return trainer.train()
-
-
-if __name__ == "__main__":
-    args = default_argument_parser().parse_args()
-    print("Command Line Args:", args)
-    launch(
-        main,
-        args.num_gpus,
-        num_machines=args.num_machines,
-        machine_rank=args.machine_rank,
-        dist_url=args.dist_url,
-        args=(args,),
-    )
+    
+if __name__ == '__main__':
+    main_train()

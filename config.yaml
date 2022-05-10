@@ -2,7 +2,7 @@ _BASE_: "./base.yaml"
 MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
-  WEIGHTS: "res50.pkl"
+  WEIGHTS: "/home/acb11129ts/workspace/ssl/detectron/ckpt/04_20_19-26_resnet50_100.pth.tar"
   RESNETS:
     DEPTH: 50
     NORM: "SyncBN"
@@ -24,13 +24,14 @@ DATASETS:
 INPUT:
   FORMAT: "RGB"
 
+OUTPUT_DIR: "outputdeepmind"
 # Following DetCon Evaluation Protocol
 SOLVER:
   # Global batch size
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 32
   
  # Detcon trained on 16 tpus with a batch size of 64, setting =16 will forece `auto_scale_workers` to retain `IMS_PER_BATCH // REFERENCE_WORLD_SIZE`=4 images per GPU
-  REFERENCE_WORLD_SIZE: 16
+  REFERENCE_WORLD_SIZE: 32
   
   BASE_LR: 0.3
   MOMENTUM: 0.9
@@ -39,10 +40,8 @@ SOLVER:
   WARMUP_ITERS: 500
   #Drop lr by factor of 10 after 2/3 and 8/9 of total training time
   GAMMA : 0.1
-  # 118K * 12 epochs / 64 img per batch = 22125 => approx to 24000
-  MAX_ITER: 24000
   STEPS: (16000, 21333)
-  # 6/9 and 8/9 of training time
+  MAX_ITER: 24000
 
 TEST:
   EVAL_PERIOD: 2500
