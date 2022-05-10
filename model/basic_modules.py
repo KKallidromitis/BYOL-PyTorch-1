@@ -158,9 +158,9 @@ class FCNMaskNet(nn.Module):
 
 def upsample_cat(feats):
     c2 = feats['c2']
-    c3 = F.interpolate(feats['c3'],56)
-    c4 = F.interpolate(feats['c4'],56)
-    c5 = F.interpolate(feats['out'],56)
+    c3 = F.interpolate(feats['c3'],56, mode='bilinear')
+    c4 = F.interpolate(feats['c4'],56, mode='bilinear')
+    c5 = F.interpolate(feats['out'],56, mode='bilinear')
     return torch.cat([c2,c3,c4,c5],dim=1)
 
 class SSNMaskNet(nn.Module):
