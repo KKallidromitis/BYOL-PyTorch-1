@@ -179,7 +179,7 @@ class SSNMaskNet(nn.Module):
         x = self.projection(x) # B X 32 X  56 X 56
         #x = x.permute(0,3,1,2)
         #breakpoint()
-        Q, H, feat = ssn_iter(x,100,5)
+        Q, H, feat = ssn_iter(x,64,5)
         return Q,H,feat
         
         

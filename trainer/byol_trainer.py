@@ -230,8 +230,8 @@ class BYOLTrainer():
         else:
             inv_loss = inv_loss.sum() / weights.sum()        
         mask_loss = self.mask_loss(Q,H,coords,raw_image)
-        loss = inv_loss + mask_loss
-        return  inv_loss + mask_loss,zero,zero,inv_loss,mask_loss
+        loss = inv_loss + 0.1* mask_loss
+        return  loss,zero,zero,inv_loss,mask_loss
 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
