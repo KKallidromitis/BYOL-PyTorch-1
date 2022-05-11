@@ -22,6 +22,9 @@ class BYOLModel(torch.nn.Module):
 
         # target network
         self.target_network = EncoderwithProjection(config)
+        self.ssn_src = config['model']['ssn']['source']
+        assert self.ssn_src in ['online','offline']
+        self.ssn_detach = config['model']['ssn']['detatch']
         
         #mask net
         
@@ -70,7 +73,10 @@ class BYOLModel(torch.nn.Module):
             return self._fpn
         else:
             return_layers = {'7':'out','6':'c4','5':'c3','4':'c2'}
-            self._fpn = IntermediateLayerGetter(self.online_network.encoder, return_layers)
+            if self.ssn_src == 'online':
+                self._fpn = IntermediateLayerGetter(self.online_network.encoder, return_layers)
+            elif self.ssn_src == 'offline':
+                self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers)
             return self._fpn
             
     def handle_flip(self,aligned_mask,flip):
@@ -134,6 +140,8 @@ class BYOLModel(torch.nn.Module):
         b = raw_image.shape[0]
         feats = self.fpn(raw_image)
         feats = upsample_cat(feats)
+        if self.ssn_detach:
+            feats = feats.detach()
         height, width = feats.shape[-2:]
         coords = torch.stack(torch.meshgrid(torch.arange(height, device='cuda'), torch.arange(width, device='cuda')), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()

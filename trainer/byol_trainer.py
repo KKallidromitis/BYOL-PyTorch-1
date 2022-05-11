@@ -156,10 +156,13 @@ class BYOLTrainer():
 
             self.start_epoch = checkpoint['epoch']
             self.steps = checkpoint['steps']
-            self.model.load_state_dict(checkpoint['model'], strict=True)
+            self.model.load_state_dict(self.filter_state_dict(checkpoint['model']), strict=True)
             self.optimizer.load_state_dict(checkpoint['optimizer'])
             amp.load_state_dict(checkpoint['amp'])
             self.logging.info(f"--> Loaded checkpoint '{model_path}' (epoch {self.start_epoch})")
+
+    def filter_state_dict(self,d):
+        return {k:v for k,v in d.items() if '_fpn' not in k}
 
     # save snapshots
     def save_checkpoint(self, epoch):
