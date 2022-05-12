@@ -15,7 +15,8 @@ class ImageLoader():
         self.data_workers = config['data']['data_workers']
         self.dual_views = config['data']['dual_views']
         self.mask_type = config['data']['mask_type']
-
+        self.subset = config['data'].get("subset", "")
+                
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
         if self.distributed and stage in ('train', 'ft'):
@@ -44,7 +45,7 @@ class ImageLoader():
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform = MultiViewDataInjector([transform1, transform2])
         
-        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform)
+        dataset = SSLMaskDataset(image_dir,mask_file,transform=transform, subset=self.subset)
         return dataset
 
     def set_epoch(self, epoch):

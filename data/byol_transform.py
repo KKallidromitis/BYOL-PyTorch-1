@@ -22,12 +22,34 @@ class MultiViewDataInjector():
         return output_cat,mask_cat
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None):
+    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None, subset=""):
         self.root = root
         self.transform = transform
-        self.samples = make_dataset(self.root, extensions = extensions) #Pytorch 1.9+
         self.loader = default_loader
         self.img_to_mask = self._get_masks(mask_file)
+        if subset == "":
+            self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
+        else:
+            if subset not in ["imagenet1p", "imagenet100"]:
+                raise NotImplementedError()
+            
+            if subset == "imagenet1p":
+                with open('1percent.txt') as f:
+                    samples = f.readlines()
+                    samples = [x.replace('\n','').strip() for x in samples ]
+                    samples = [x for x in samples if x]
+                    samples = [(os.path.join(root,x.split('_')[0],x),None) for x in samples]
+                    #samples = [x for x in samples if os.path.exists(x[0])]
+                    self.samples = sorted(samples)
+                    
+            elif subset == "imagenet100":
+                with open("imagenet100.txt") as f:
+                    subset_classes = f.read().splitlines()
+                assert len(subset_classes) == 100
+                samples = []
+                for c in subset_classes:
+                    samples.extend([(os.path.join(root, c, f), None) for f in os.listdir(os.path.join(root, c))])
+                self.samples = samples
 
     def _get_masks(self, mask_file):
         with open(mask_file, "rb") as file:
