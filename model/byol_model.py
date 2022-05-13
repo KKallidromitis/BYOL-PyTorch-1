@@ -128,11 +128,18 @@ class BYOLModel(torch.nn.Module):
                 converted_idx = raw_mask_target
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
         return converted_idx_b,converted_idx
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
         idx = torch.LongTensor([1,0,3,2]).cuda()
+        # reset k means if necessary
+        if self.n_kmeans != clustering_k:
+            self.n_kmeans = clustering_k
+            if self.n_kmeans < 9999:
+                self.kmeans = KMeans(self.n_kmeans,)
+            else:
+                self.kmeans = None
         # Get spanning view embeddings
         with torch.no_grad():
             if self.n_kmeans < 9999:

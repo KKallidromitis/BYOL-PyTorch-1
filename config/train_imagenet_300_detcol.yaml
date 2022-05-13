@@ -15,6 +15,26 @@ model:
     hidden_dim: 4096
     output_dim: 256
 
+clustering:
+  scheduler:
+    type: 'cosine'
+    epochs: [0,300]
+    values: [64,1]
+    # config = {
+    #     "type":"cosine",
+    #     "epochs":[0,300],
+    #     "values":[64,1] # [1,64] work as well
+    # }
+    # # config = {
+    # #     "type":"piecewise",
+    # #     "epochs":[0,150,300],
+    # #     "values":[1,64,32] # 0-150:1 ,150-300:64,300-inf:32
+    # # }
+    # # config = {
+    # #     "type":"linear",
+    # #     "epochs":[0,150,300],
+    # #     "values":[1,64,32]
+    # # }
 amp:
   sync_bn: True
   opt_level: "O0"
