@@ -119,8 +119,10 @@ class BYOLModel(torch.nn.Module):
         labels = labels.view(b,-1)
         raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
         if user_masknet:
+                import ipdb;ipdb.set_trace()
                 # USE hirearchl clustering on outputs of masknet
                 raw_masks = self.masknet(feats)
+                
                 converted_idx = self.get_label_map(raw_masks)
                 converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
         else:
@@ -129,6 +131,7 @@ class BYOLModel(torch.nn.Module):
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
         return converted_idx_b,converted_idx
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+        import ipdb;ipdb.set_trace()
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224

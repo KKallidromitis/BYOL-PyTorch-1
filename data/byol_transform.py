@@ -87,16 +87,18 @@ class MultiViewDataInjector():
         return output_cat,mask_cat,transforms
 
 class SSLMaskDataset(VisionDataset):
-    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=None, subset=""):
+    def __init__(self, root: str, mask_file: str, extensions = IMG_EXTENSIONS, transform = None,mask_file_path=None, subset="",specific=None):
         self.root = root
         self.transform = transform
-        if subset == "":
+        if specific!=None:
+                samples = [(os.path.join(root, specific, f), None) for f in os.listdir(os.path.join(root, specific))]
+                self.samples = samples
+        elif subset == "":
             self.samples = make_dataset(self.root, extensions = extensions,) #Pytorch 1.9+
         else:
             if subset not in ["imagenet1p", "imagenet100"]:
                 raise NotImplementedError()
-            
-            if subset == "imagenet1p":
+            elif subset == "imagenet1p":
                 with open('1percent.txt') as f:
                     samples = f.readlines()
                     samples = [x.replace('\n','').strip() for x in samples ]
@@ -125,7 +127,6 @@ class SSLMaskDataset(VisionDataset):
         
     def __getitem__(self, index: int):
         path, _ = self.samples[index]
-        
         # Load Image
         sample = self.loader(path)
         
@@ -141,7 +142,7 @@ class SSLMaskDataset(VisionDataset):
         # Apply transforms
         if self.transform is not None:
             sample,mask,diff_transfrom = self.transform(sample,mask.unsqueeze(0))
-        return sample,mask,diff_transfrom
+        return sample,mask,diff_transfrom,path
 
     def __len__(self) -> int:
         return len(self.samples)

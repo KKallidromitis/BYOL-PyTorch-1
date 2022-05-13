@@ -207,12 +207,13 @@ class BYOLTrainer():
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
+        mask_exists = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
         if self.use_weight:
             weights =  (weights[:mask_batch_size]+weights[mask_batch_size:])/2
         else:
             weights = torch.ones_like(weights[:mask_batch_size])
         if self.overlap_indicator:
-            weights *= torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
+            weights *= mask_exists
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
@@ -247,7 +248,7 @@ class BYOLTrainer():
             self.adjust_learning_rate(self.steps)
             self.adjust_mm(self.steps)
             self.steps += 1
-            #import ipdb;ipdb.set_trace()
+            import ipdb;ipdb.set_trace()
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
