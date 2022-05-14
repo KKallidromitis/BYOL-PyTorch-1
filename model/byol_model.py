@@ -136,7 +136,7 @@ class BYOLModel(torch.nn.Module):
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
         return converted_idx_b,converted_idx
 
-    def ssn(self,raw_image):
+    def ssn(self,raw_image,clustering_k):
         b = raw_image.shape[0]
         feats = self.fpn(raw_image)
         feats = upsample_cat(feats)
@@ -146,10 +146,10 @@ class BYOLModel(torch.nn.Module):
         coords = torch.stack(torch.meshgrid(torch.arange(height, device='cuda'), torch.arange(width, device='cuda')), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
         feats = torch.cat([feats, coords], 1)
-        Q, H, feats = self.masknet(feats)
+        Q, H, feats = self.masknet(feats,clustering_k)
         return Q, H,coords
         
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None):
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=1):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
@@ -159,7 +159,7 @@ class BYOLModel(torch.nn.Module):
             if self.n_kmeans < 9999:
                 converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
             elif self.masknet_on:
-                Q,H,coords = self.ssn(raw_image)
+                Q,H,coords = self.ssn(raw_image,clustering_k)
                 # Q: B X N_SLIC X (56 X 56)
                 b,c,_ = Q.shape
                 # loss calc

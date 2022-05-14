@@ -173,13 +173,13 @@ class SSNMaskNet(nn.Module):
             nn.Conv2d(256,32,1)
         )
     
-    def forward(self,x):
+    def forward(self,x,n_mask=64):
         #x = upsample_cat(x) # B X 3840+2 X 56 X 56
         #x = x.permute(0,2,3,1)
         x = self.projection(x) # B X 32 X  56 X 56
         #x = x.permute(0,3,1,2)
         #breakpoint()
-        Q, H, feat = ssn_iter(x,64,5)
+        Q, H, feat = ssn_iter(x,n_mask,5)
         return Q,H,feat
         
         

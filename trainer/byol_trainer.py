@@ -22,6 +22,7 @@ from utils.data_prefetcher import data_prefetcher
 from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
 from utils.ssn_lib.utils.loss import reconstruct_loss_with_cross_etnropy,reconstruct_loss_with_mse
+from utils.scheduler import build_scheduler
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -46,6 +47,7 @@ class BYOLTrainer():
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
         self.global_batch_size = self.world_size * self.train_batch_size
+        self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
 
         self.num_examples = self.config['data']['num_examples']
         subset = self.config['data'].get("subset", "") #Update num_examples for subsets
@@ -234,7 +236,7 @@ class BYOLTrainer():
             inv_loss = inv_loss.sum() / weights.sum()        
         mask_loss = self.mask_loss(Q,H,coords,raw_image)
         loss = inv_loss + 0.1* mask_loss
-        return  loss,zero,zero,inv_loss,mask_loss
+        return  loss,zero,zero,inv_loss,mask_loss,mask_exists.float().sum(-1).mean().detach()
 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -248,7 +250,7 @@ class BYOLTrainer():
 
         end = time.time()
         self.data_ins.set_epoch(epoch)
-
+        clustering_k = self.clustering_scheduler.get_num_segments(epoch)
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
@@ -274,11 +276,11 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask,Q,H,coords = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask)
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask,Q,H,coords = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,clustering_k)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,Q,H,coords,view_raw)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,Q,H,coords,view_raw)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -317,6 +319,8 @@ class BYOLTrainer():
                     'Data Time': round(data_time.val, 5),
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
+                    "K-clustering":clustering_k,
+                    "num_indicator":round(num_indicator.item(),5),
                 })
                 if  (self.steps//self.log_step) % 5 == 1:
                     # img_mask = mask_target[0].detach().cpu()
