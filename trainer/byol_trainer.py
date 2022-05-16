@@ -259,6 +259,7 @@ class BYOLTrainer():
             input_masks = masks[:,:2,0,...].contiguous() # discard last mask,B X 2 X 224 X 224
             slic_labelmap = masks[:,2,1,...].contiguous() # B X 1 X H X W
             full_view_prior_mask = masks[:,2,0,...].contiguous() # B X 1 X H X W
+            #breakpoint()
             # measure data loading time
             data_time.update(time.time() - end)
             #breakpoint()

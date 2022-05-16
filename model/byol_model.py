@@ -36,6 +36,7 @@ class BYOLModel(torch.nn.Module):
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
+        self.coco = config['data']['mask_type'] == 'coco'
         if self.n_kmeans < 9999:
             self.kmeans = KMeans(self.n_kmeans,)
         else:
@@ -142,7 +143,10 @@ class BYOLModel(torch.nn.Module):
                 self.kmeans = None
         # Get spanning view embeddings
         with torch.no_grad():
-            if self.n_kmeans < 9999:
+            if self.coco and self.n_kmeans <=4:
+                converted_idx_b = to_binary_mask(full_view_prior_mask,-1,(56,56))
+                converted_idx =  torch.argmax(converted_idx_b,1)
+            elif self.n_kmeans < 9999:
                 converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
             else:
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
