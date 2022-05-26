@@ -4,11 +4,11 @@ import yaml
 import torch
 import torch.distributed as dist
 
-from trainer.byol_trainer import BYOLTrainer
+from trainer.r2o_trainer import R2OTrainer
 from utils import logging_util, distributed_utils
 import argparse
 
-parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
+parser = argparse.ArgumentParser(description='R2O Training')
 parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 
                     help="Torch distributed will automatically pass local argument")
 parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
@@ -27,7 +27,7 @@ def run_task(config):
     else:
         config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
 
-    trainer = BYOLTrainer(config)
+    trainer = R2OTrainer(config)
     rs = '/shared/jacklishufan/04_13_19-46_resnet50_300.pth.tar'
     rs = None
     trainer.resume_model(model_path=rs)

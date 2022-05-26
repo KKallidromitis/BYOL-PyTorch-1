@@ -1,2 +1,2 @@
 #-*- coding:utf-8 -*-
-from .byol_model import BYOLModel
+from .r2o_model import R2OModel

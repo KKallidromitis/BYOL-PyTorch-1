@@ -1,9 +1,10 @@
 model:
   base_momentum: 0.99
+  masknet: false
   backbone:
     type: "resnet50"
     pretrained: false
-  projection:   # src: A.2 of detcon paper
+  projection:
     type: "MLP" 
     input_dim: 2048
     hidden_dim: 4096
@@ -14,19 +15,44 @@ model:
     hidden_dim: 4096
     output_dim: 256
 
+clustering:
+  scheduler:
+    type: 'cosine'
+    epochs: [0,300]
+    values: [64,1]
+    # config = {
+    #     "type":"cosine",
+    #     "epochs":[0,300],
+    #     "values":[64,1] # [1,64] work as well
+    # }
+    # # config = {
+    # #     "type":"piecewise",
+    # #     "epochs":[0,150,300],
+    # #     "values":[1,64,32] # 0-150:1 ,150-300:64,300-inf:32
+    # # }
+    # # config = {
+    # #     "type":"linear",
+    # #     "epochs":[0,150,300],
+    # #     "values":[1,64,32]
+    # # }
 amp:
   sync_bn: True
   opt_level: "O0"
 
 data:
-  image_dir: "" #TODO: Change to match Japan Cluster
-  mask_type: "fh"
+  image_dir: "/home/kkallidromitis/data/imagenet"
+  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   resize_size: 224 # src: 3.1
-  data_workers: 16
-  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
-  val_batch_size: 32 #  Should not matter
+  data_workers: 8
+  overlap_indicator: true 
+  weight: false
+  n_kmeans: 9999
+  slic_segments: 100
+  train_batch_size: 4 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  val_batch_size: 32
   dual_views: true
-  num_examples: 12000
+  over_lap_mask: false
+  num_examples: 1281167 #For imagenet1p, imagenet100, r2o_trainer automatically updates num_examples accordingly
 
 optimizer:
   type: lars
@@ -38,15 +64,11 @@ optimizer:
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
-loss: #src: 3.1
-  temperature: 0.1
-  mask_rois: 16
-
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 10
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
+  save_epoch: 50
+  ckpt_path: "ckpt/r2o/{}/{}_{}_{}.pth.tar"
 
 log:
   log_step: 10
@@ -54,5 +76,5 @@ log:
   log_all: False
 
 stage: "train"
-distributed: true
+distributed: True
 seed: 0

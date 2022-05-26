@@ -14,16 +14,16 @@ import wandb
 from apex.parallel import DistributedDataParallel as DDP
 from apex import amp
 
-from model import BYOLModel
+from model import R2OModel
 from optimizer import LARS
-from data import ImageLoader,ImageLoadeCOCO
+from data import ImageLoader
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
 from utils.scheduler import build_scheduler
 
-class BYOLTrainer():
+class R2OTrainer():
     def __init__(self, config):
         self.config = config
         
@@ -86,7 +86,7 @@ class BYOLTrainer():
         self.log_all = self.config['log']['log_all']
         self.cross_entrophy_loss = torch.nn.CrossEntropyLoss()
         if self.gpu==0 or self.log_all:
-            wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
+            wandb.init(project="r2o_pretrain",name = save_dir+'_gpu_'+str(self.rank))
         
         try:
             os.makedirs(save_dir)
@@ -103,12 +103,8 @@ class BYOLTrainer():
     def construct_model(self):
         """get data loader"""
         self.stage = self.config['stage']
-        assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for BYOL training')
-        if self.config['data']['mask_type'] == 'coco':
-            print("DEBUG: Using Coco GT Mask")
-            self.data_ins = ImageLoadeCOCO(self.config)
-        else:
-            self.data_ins = ImageLoader(self.config)
+        assert self.stage == 'train', ValueError(f'Invalid stage: {self.stage}, only "train" for R2O training')
+        self.data_ins = ImageLoader(self.config)
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
@@ -117,12 +113,12 @@ class BYOLTrainer():
         print(f"sync_bn: {self.sync_bn}")
 
         """build model"""
-        print("init byol model!")
-        net = BYOLModel(self.config)
+        print("init r2o model!")
+        net = R2OModel(self.config)
         if self.sync_bn:
             net = apex.parallel.convert_syncbn_model(net)
         self.model = net.to(self.device)
-        print("init byol model end!")
+        print("init r2o model end!")
 
         """build optimizer"""
         print("get optimizer!")

@@ -13,7 +13,7 @@ from utils.distributed_utils import gather_from_all
 from torch.utils.data import DataLoader
 import numpy as np
 
-class BYOLModel(torch.nn.Module):
+class R2OModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
 
