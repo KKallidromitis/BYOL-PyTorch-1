@@ -12,7 +12,7 @@ class Scheduler:
     def get_num_segments(self,epoch):
         k = self.get_k(epoch)
         k = int(k)
-        if k > 64:
+        if k > 128:
             return 9999
         elif k < 1:
             return 1
@@ -112,8 +112,10 @@ class CosineScheduler(Scheduler):
         pi_2 =  np.pi / 2
         x = (epoch - self.start) / (self.end - self.start) * pi_2
         if self.sign == 1:
-            x = pi_2 - x
-        k = np.cos(x) * (self.max- self.min) + self.min
+            a = 1-np.cos(x)
+        else:
+            a = np.cos(x)
+        k = a * (self.max- self.min) + self.min
         
         return k
 

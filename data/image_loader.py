@@ -72,6 +72,7 @@ class ImageLoadeCOCO():
         self.data_workers = config['data']['data_workers']
         self.dual_views = config['data']['dual_views']
         self.mask_type = config['data']['mask_type']
+        self.slic_segments = config['data']['slic_segments']
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
 
     def get_loader(self, stage, batch_size):
@@ -100,7 +101,7 @@ class ImageLoadeCOCO():
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform3 = get_transform('raw')
-        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask)
+        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,self.slic_segments )
         annoFile = os.path.join(self.image_dir,'annotations', f"{'instances_train2017.json' if stage in ('train', 'ft') else 'instances_val2017.json'}")
         dataset = COCOMaskDataset(image_dir,annoFile,transform)
         return dataset
