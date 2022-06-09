@@ -115,3 +115,13 @@ venv.bak/
 **.pth
 **.pth.tar
 launch.sh
+
+#dataset
+coco
+imagenet
+
+#media file
+*.png
+
+#notebook in root folder
+*.ipynb

@@ -2,12 +2,13 @@ model:
   base_momentum: 0.99
   masknet: false
   backbone:
-    type: "resnet50"
+    type: "vit"
     pretrained: false
+    feature_resolution: 14 # 14 x 14
   projection:   # src: A.2 of detcon paper
     type: "MLP" 
-    input_dim: 2048
-    hidden_dim: 4096
+    input_dim: 768
+    hidden_dim: 2048
     output_dim: 256
   predictor:
     type: "MLP"
@@ -17,9 +18,9 @@ model:
 
 clustering:
   scheduler:
-    type: 'linear'
-    epochs: [0,30]
-    values: [64,4]
+    type: 'cosine'
+    epochs: [0,300]
+    values: [64,1]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
@@ -40,20 +41,20 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "coco" #TODO: Change to match Japan Cluster
-  #subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
-  mask_type: "coco"
+  image_dir: "./imagenet" #TODO: Change to match Japan Cluster
+  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
+  mask_type: ""
   resize_size: 224 # src: 3.1
   data_workers: 8
-  overlap_indicator: true 
-  weight: false
+  overlap_indicator: false 
+  weight: true
   n_kmeans: 9999
   slic_segments: 100
-  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 4 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
-  num_examples: 117266 #For imagenet1p, imagenet100, byol_trainer automatically updates num_examples accordingly
+  num_examples: 1281167 #For imagenet1p, imagenet100, byol_trainer automatically updates num_examples accordingly
 
 optimizer:
   type: lars
@@ -61,7 +62,7 @@ optimizer:
   lr_type: "cosine"
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
-  total_epochs: 30
+  total_epochs: 300
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
@@ -72,7 +73,7 @@ loss: #src: 3.1
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 10
+  save_epoch: 50
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:

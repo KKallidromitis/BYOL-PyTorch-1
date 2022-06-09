@@ -36,6 +36,8 @@ class BYOLModel(torch.nn.Module):
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
+        self.encoder_type = config['model']['backbone']['type']
+        self.feature_resolution =  config['model']['backbone']['feature_resolution']
         if self.n_kmeans < 9999:
             self.kmeans = KMeans(self.n_kmeans,)
         else:
@@ -69,8 +71,17 @@ class BYOLModel(torch.nn.Module):
         if self._fpn:
             return self._fpn
         else:
-            self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
+            if self.encoder_type == 'vit':
+                self._fpn = self.target_network.encoder
+            else:
+                self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
             return self._fpn
+
+    def get_feature(self,x):
+        if self.encoder_type == 'vit':
+            return self.fpn(x)
+        else:
+            return self.fpn(x)['c4']
             
     def handle_flip(self,aligned_mask,flip):
         '''
@@ -103,14 +114,18 @@ class BYOLModel(torch.nn.Module):
 
     def do_kmeans(self,raw_image,slic_mask,user_masknet):
         b = raw_image.shape[0]
-        feats = self.fpn(raw_image)['c4']
+        #feats = self.fpn(raw_image)['c4']
+        #feats = self.online_network.encoder.forward_features(raw_image) # N X 196 X 768
+        feats = self.get_feature(raw_image) # N X C X 14 X 14
+        _,d_feature,_,_ = feats.shape
         super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
         pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
-        super_pixel_pooled = pooled.view(-1,1024).detach()
+        super_pixel_pooled = pooled.view(-1,d_feature).detach()
         if self.kmeans_gather:
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled
+        #breakpoint()
         labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
         if self.kmeans_gather:
             start_idx =  self.rank *b
@@ -129,6 +144,8 @@ class BYOLModel(torch.nn.Module):
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
         return converted_idx_b,converted_idx
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
+        #breakpoint()
+        #r = self.online_network.encoder.forward_features(view1[:2]) # N X 196 X 768
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
@@ -156,8 +173,8 @@ class BYOLModel(torch.nn.Module):
             rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
             flip_1 = roi_t[:,0,4]
             flip_2 = roi_t[:,1,4]
-            aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
-            aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
+            aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,self.feature_resolution),flip_1) # mask output is B X 16 X 7 X 7
+            aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,self.feature_resolution),flip_2) # mask output is B X 16 X 7 X 7
             mask_b,mask_c,h,w =aligned_1.shape
             aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
             aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()

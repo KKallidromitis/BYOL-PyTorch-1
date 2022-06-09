@@ -1,11 +1,13 @@
 #-*- coding:utf-8 -*-
 import imp
+from turtle import forward
 import torch
 import torch.nn as nn
 from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
 import numpy as np
+import timm
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -155,14 +157,33 @@ class FCNMaskNet(nn.Module):
         return x
 
 
+class VitWrapper(nn.Module):
+    def __init__(self,backbone,feature_resolution=14):
+        super().__init__()
+        self.backbone = backbone
+        self.dim = feature_resolution
+
+    @property
+    def forward_features(self):
+        return self.backbone.forward_features
+        
+    def forward(self,x):
+        feat = self.backbone.forward_features(x).permute(0,2,1)
+        n,c,hw = feat.shape
+        return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
+
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
         # backbone
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
-        base_encoder = models.__dict__[net_name](pretrained=pretrained)
-        self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
+        if net_name == 'vit':
+            base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =False)
+            self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'])
+        else:
+            base_encoder = models.__dict__[net_name](pretrained=pretrained)
+            self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
 
         # projection
         input_dim = config['model']['projection']['input_dim']
@@ -172,6 +193,7 @@ class EncoderwithProjection(nn.Module):
         
     def forward(self, x, masks,mask_ids, mnet=None):
         #import ipdb;ipdb.set_trace()
+        #breakpoint()
         x = self.encoder(x) #(B, 2048, 7, 7)
         #breakpoint()
         # Detcon mask multiply
