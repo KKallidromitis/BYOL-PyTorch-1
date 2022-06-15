@@ -168,7 +168,7 @@ class VitWrapper(nn.Module):
         return self.backbone.forward_features
         
     def forward(self,x):
-        feat = self.backbone.forward_features(x).permute(0,2,1)
+        feat = self.backbone.forward_features(x).permute(0,2,1)[:,:,1:]
         n,c,hw = feat.shape
         return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
 
@@ -179,7 +179,7 @@ class EncoderwithProjection(nn.Module):
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
         if net_name == 'vit':
-            base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =False)
+            base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =True)
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'])
         else:
             base_encoder = models.__dict__[net_name](pretrained=pretrained)

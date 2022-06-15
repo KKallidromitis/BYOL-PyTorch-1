@@ -157,7 +157,7 @@ class BYOLTrainer():
 
             self.start_epoch = checkpoint['epoch']
             self.steps = checkpoint['steps']
-            self.model.load_state_dict(checkpoint['model'], strict=True)
+            self.model.load_state_dict(checkpoint['model'], strict=False)
             self.optimizer.load_state_dict(checkpoint['optimizer'])
             amp.load_state_dict(checkpoint['amp'])
             self.logging.info(f"--> Loaded checkpoint '{model_path}' (epoch {self.start_epoch})")
