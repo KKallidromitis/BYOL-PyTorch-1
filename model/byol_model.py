@@ -12,6 +12,7 @@ from utils.kmeans.dataset import KMeansDataset
 from utils.distributed_utils import gather_from_all
 from torch.utils.data import DataLoader
 import numpy as np
+from utils.kmeans.per_image import BatchwiseKMeans
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -36,8 +37,13 @@ class BYOLModel(torch.nn.Module):
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
+        self.per_image_k_means = config['clustering']['per_image']
+        if self.per_image_k_means:
+            self.kmeans_class = BatchwiseKMeans
+        else:
+            self.kmeans_class = KMeans
         if self.n_kmeans < 9999:
-            self.kmeans = KMeans(self.n_kmeans,)
+            self.kmeans = self.kmeans_class(self.n_kmeans,)
         else:
             self.kmeans = None
         self.kmeans_gather = False # NOT TESTED
@@ -106,12 +112,16 @@ class BYOLModel(torch.nn.Module):
         feats = self.fpn(raw_image)['c4']
         super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
         pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
-        super_pixel_pooled = pooled.view(-1,1024).detach()
+        super_pixel_pooled = pooled.detach()
+        if not self.per_image_k_means:
+            super_pixel_pooled = super_pixel_pooled.view(-1,1024)
         if self.kmeans_gather:
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled
-        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100
+        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100 
+        if self.per_image_k_means:
+            labels = labels[0] #second return is centroid
         if self.kmeans_gather:
             start_idx =  self.rank *b
             end_idx = start_idx + b
@@ -137,7 +147,7 @@ class BYOLModel(torch.nn.Module):
         if self.n_kmeans != clustering_k:
             self.n_kmeans = clustering_k
             if self.n_kmeans < 9999:
-                self.kmeans = KMeans(self.n_kmeans,)
+                self.kmeans = self.kmeans_class(self.n_kmeans,)
             else:
                 self.kmeans = None
         # Get spanning view embeddings

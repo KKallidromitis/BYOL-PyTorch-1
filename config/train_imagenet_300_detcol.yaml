@@ -16,10 +16,11 @@ model:
     output_dim: 256
 
 clustering:
+  per_image: true
   scheduler:
-    type: 'cosine'
+    type: 'linear'
     epochs: [0,300]
-    values: [64,1]
+    values: [32,3]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
