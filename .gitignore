@@ -115,3 +115,7 @@ venv.bak/
 **.pth
 **.pth.tar
 launch.sh
+
+#data
+coco
+imagenet

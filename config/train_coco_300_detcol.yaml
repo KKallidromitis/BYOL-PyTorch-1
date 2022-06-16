@@ -18,8 +18,8 @@ model:
 clustering:
   scheduler:
     type: 'linear'
-    epochs: [0,300]
-    values: [128,4]
+    epochs: [0,30]
+    values: [4,4]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
@@ -40,11 +40,11 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "/home/jacklishufan/ByteTrack/datasets/coco" #TODO: Change to match Japan Cluster
+  image_dir: "coco" #TODO: Change to match Japan Cluster
   #subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: "coco"
   resize_size: 224 # src: 3.1
-  data_workers: 8
+  data_workers: 16
   overlap_indicator: true 
   weight: false
   n_kmeans: 9999
@@ -61,7 +61,7 @@ optimizer:
   lr_type: "cosine"
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
-  total_epochs: 300
+  total_epochs: 30
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
 
@@ -72,7 +72,7 @@ loss: #src: 3.1
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 50
+  save_epoch: 10
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:
