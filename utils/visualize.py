@@ -11,4 +11,4 @@ def wandb_dump_img(imgs,category):
     for idx,img in enumerate(imgs):
         axes[idx].imshow(img)
     wandb.log({category:wandb.Image(fig)}) 
-    
+    plt.close(fig)

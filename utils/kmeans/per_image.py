@@ -1,6 +1,6 @@
 import time
 import torch
-from pykeops.torch import LazyTensor
+#from pykeops.torch import LazyTensor
 import numpy as np
 
 def batched_distance_matrix(x,y):
@@ -102,8 +102,8 @@ def do_batch_kmeans(x, K=10, Niter=10,init='K-means++',eps=1e-6):
     c = k_means_pp_batched(x,K)
     c = x[:,:K, :].clone()  # Simplistic initialization for the centroids
 
-    x_i = LazyTensor(x.view(N,B, 1, D))  # (N, 1, D) samples
-    c_j = LazyTensor(c.view(N,1, K, D))  # (1, K, D) centroids
+    x_i = x.view(N,B, 1, D)  # (N, 1, D) samples
+    c_j = c.view(N,1, K, D) # (1, K, D) centroids
     Ncl = torch.zeros(N,K,1, dtype=x.dtype, device=x.device)
     _ones = torch.ones(N,B,1, dtype=x.dtype, device=x.device)
     # K-means loop:
@@ -113,9 +113,9 @@ def do_batch_kmeans(x, K=10, Niter=10,init='K-means++',eps=1e-6):
     for i in range(Niter):
 
         # E step: assign points to the closest cluster -------------------------
-        D_ij = ((x_i - c_j) ** 2).sum(-1)  # (N,B,K) symbolic squared distances
+        D_ij = ((x_i - c_j) ** 2).sum(-1,keepdim=True)  # (N,B,K) symbolic squared distances
         cl = D_ij.argmin(dim=2).long()  # Points -> Nearest cluster
-        inertia = D_ij.min(dim=2).sum() #torch.sum(D_ij.min(dim=-1))
+        inertia = D_ij.min(dim=2,keepdim=True).values.sum() #torch.sum(D_ij.min(dim=-1))
         #breakpoint()
         if abs(inertia) < eps:
                 # self.labels_ = labels
