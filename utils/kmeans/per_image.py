@@ -98,9 +98,10 @@ def do_batch_kmeans(x, K=10, Niter=10,init='K-means++',eps=1e-6):
 
     start = time.time()
     N,B, D = x.shape  # Batch_Size X Samples per Batch X Dim
-
-    c = k_means_pp_batched(x,K)
-    c = x[:,:K, :].clone()  # Simplistic initialization for the centroids
+    if init == 'K-means++':
+        c = k_means_pp_batched(x,K)
+    else:
+        c = x[:,:K, :].clone()  # Simplistic initialization for the centroids
 
     x_i = x.view(N,B, 1, D)  # (N, 1, D) samples
     c_j = c.view(N,1, K, D) # (1, K, D) centroids
