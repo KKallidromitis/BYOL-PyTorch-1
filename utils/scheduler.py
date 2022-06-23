@@ -12,7 +12,7 @@ class Scheduler:
     def get_num_segments(self,epoch):
         k = self.get_k(epoch)
         k = int(k)
-        if k > 128:
+        if k > 1024:
             return 9999
         elif k < 1:
             return 1
