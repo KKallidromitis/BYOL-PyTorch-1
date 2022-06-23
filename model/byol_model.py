@@ -46,7 +46,7 @@ class BYOLModel(torch.nn.Module):
             self.kmeans = self.kmeans_class(self.n_kmeans,)
         else:
             self.kmeans = None
-        self.kmeans_gather = False # NOT TESTED
+        self.kmeans_gather = config['clustering']['gather'] # NOT TESTED
         self.rank = config['rank']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
@@ -116,6 +116,8 @@ class BYOLModel(torch.nn.Module):
         if not self.per_image_k_means:
             super_pixel_pooled = super_pixel_pooled.view(-1,1024)
         if self.kmeans_gather:
+            _,_,v = torch.pca_lowrank(super_pixel_pooled)
+            super_pixel_pooled = super_pixel_pooled @ v[:,:256]
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled

@@ -119,3 +119,10 @@ launch.sh
 #data
 coco
 imagenet
+
+#paper visualization
+LUSS.ipynb
+mask_alone.png
+masks vis.ipynb
+neighborhood.ipynb
+panda_reg.png
