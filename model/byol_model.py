@@ -13,6 +13,7 @@ from utils.distributed_utils import gather_from_all
 from torch.utils.data import DataLoader
 import numpy as np
 from utils.kmeans.per_image import BatchwiseKMeans
+from data.byol_transform import denormalize,rgb_to_hsv
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -47,7 +48,10 @@ class BYOLModel(torch.nn.Module):
         else:
             self.kmeans = None
         self.kmeans_gather = config['clustering']['gather'] # NOT TESTED
+        self.no_slic  = config['clustering']['no_slic']
         self.rank = config['rank']
+        self.w_color = config['clustering']['weight_color']
+        self.w_spatial = config['clustering']['weight_spatial']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
 
@@ -110,18 +114,28 @@ class BYOLModel(torch.nn.Module):
     def do_kmeans(self,raw_image,slic_mask,user_masknet):
         b = raw_image.shape[0]
         feats = self.fpn(raw_image)['c4']
-        super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
-        pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
-        super_pixel_pooled = pooled.detach()
+        feats = F.normalize(feats,dim=1)
+        coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
+        coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
+        if self.no_slic:
+            raw_image_downsampled = F.adaptive_avg_pool2d(raw_image,14)
+            raw_image_downsampled = denormalize(raw_image_downsampled)
+            raw_image_downsampled = rgb_to_hsv(raw_image_downsampled)
+            super_pixel_pooled = torch.cat((raw_image_downsampled*self.w_color,feats,coords*self.w_spatial),dim=1).permute(0,2,3,1).flatten(1,2).contiguous() # B X 196 X 1027
+        else:
+            super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
+            pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
+            super_pixel_pooled = pooled.detach()
         if not self.per_image_k_means:
-            super_pixel_pooled = super_pixel_pooled.view(-1,1024)
+            d_emb = super_pixel_pooled.shape[-1]
+            super_pixel_pooled = super_pixel_pooled.view(-1,d_emb)
         if self.kmeans_gather:
             _,_,v = torch.pca_lowrank(super_pixel_pooled)
             super_pixel_pooled = super_pixel_pooled @ v[:,:256]
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled
-        labels = self.kmeans.fit_transform(F.normalize(super_pixel_pooled_large,dim=-1)) # B X 100 
+        labels = self.kmeans.fit_transform(super_pixel_pooled_large) # B X 100 
         if self.per_image_k_means:
             labels = labels[0] #second return is centroid
         if self.kmeans_gather:
@@ -129,16 +143,20 @@ class BYOLModel(torch.nn.Module):
             end_idx = start_idx + b
             labels = labels[start_idx:end_idx]
         labels = labels.view(b,-1)
-        raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
-        if user_masknet:
-                # USE hirearchl clustering on outputs of masknet
-                raw_masks = self.masknet(feats)
-                converted_idx = self.get_label_map(raw_masks)
-                converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
+        if not self.no_slic:
+            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
+            if user_masknet:
+                    # USE hirearchl clustering on outputs of masknet
+                    raw_masks = self.masknet(feats)
+                    converted_idx = self.get_label_map(raw_masks)
+                    converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
+            else:
+                    raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
+                    converted_idx = raw_mask_target
         else:
-                raw_masks = torch.ones(b,1,0,0).cuda() # to make logging happy
-                converted_idx = raw_mask_target
-        converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans)
+            #no slic
+            converted_idx = labels.view(-1,14,14)
+        converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans,resize_to=(56,56))
         return converted_idx_b,converted_idx
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]

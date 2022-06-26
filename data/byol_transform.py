@@ -13,6 +13,7 @@ from pycocotools.coco import COCO
 import os
 from skimage.segmentation import slic
 
+
 def get_differentialble_transform(i,j,h,w,flip,crop_size):
         def g(x): # differentiable transform
             # B X C X H X W
@@ -30,13 +31,13 @@ def to_slic(img,**kwargs):
     return seg.view(1, h, w)
 
 class MultiViewDataInjector():
-    def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224,slic_segments=100):
+    def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224,slic_segments=100,do_slic=True):
         self.transform_list = transform_list
         self.over_lap_mask = over_lap_mask
         self.crop_size = crop_size
         self.p = flip_p
         self.slic_segments = slic_segments
-        self.slic = True
+        self.slic = do_slic
 
     def _get_crop_box(self,image):
         return transforms.RandomResizedCrop.get_params(image,scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0))
@@ -307,6 +308,65 @@ class Solarize():
 
     def __call__(self, sample):
         return ImageOps.solarize(sample, self.threshold)
+
+def denormalize(raw_image):
+    '''
+    input: B X C X 224 X 224
+    '''
+    
+    mean= torch.tensor([0.485, 0.456, 0.406],device=raw_image.device).view(1,3,1,1)
+    std= torch.tensor([0.229, 0.224, 0.225],device=raw_image.device).view(1,3,1,1)
+    return (raw_image * std )+mean
+
+def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    r"""Convert an image from RGB to HSV.
+
+    .. image:: _static/img/rgb_to_hsv.png
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        image: RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        eps: scalar to enforce numarical stability.
+
+    Returns:
+        HSV version of the image with shape of :math:`(*, 4, H, W)`.
+        The H channel values are represented as sin(h),cos(h). S and V are in the range 0..1.
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       color_conversions.html>`__.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb_to_hsv(input)  # 2x4x4x5
+    """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    max_rgb, argmax_rgb = image.max(-3)
+    min_rgb, argmin_rgb = image.min(-3)
+    deltac = max_rgb - min_rgb
+
+    v = max_rgb
+    s = deltac / (max_rgb + eps)
+
+    deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
+    rc, gc, bc = torch.unbind((max_rgb.unsqueeze(-3) - image), dim=-3)
+
+    h1 = (bc - gc)
+    h2 = (rc - bc) + 2.0 * deltac
+    h3 = (gc - rc) + 4.0 * deltac
+
+    h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
+    h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
+    h = (h / 6.0) % 1.0
+    h = 2. * np.pi * h  # we return 0/2pi output
+
+    return torch.stack((torch.sin(h),torch.cos(h), s, v), dim=-3)
 
 def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224,crop_cordinates=None):
     #i, j, h, w = crop_cordinates

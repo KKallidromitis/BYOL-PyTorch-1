@@ -17,11 +17,14 @@ model:
 
 clustering:
   per_image: false
-  gather: true
+  gather: false
+  no_slic: true
+  weight_color: 1.0
+  weight_spatial: 0.5
   scheduler:
     type: 'linear'
     epochs: [0,300]
-    values: [512,16]
+    values: [128,4]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
@@ -51,7 +54,7 @@ data:
   weight: false
   n_kmeans: 9999
   slic_segments: 100
-  train_batch_size: 64 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
