@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+import yaml
 
 from tensorboardX import SummaryWriter
 import apex
@@ -80,7 +81,7 @@ class BYOLTrainer():
             
         self.save_epoch = self.config['checkpoint']['save_epoch']
         self.ckpt_path = self.config['checkpoint']['ckpt_path'].format(
-            self.time_stamp,self.time_stamp, self.config['model']['backbone']['type'], {})
+            self.time_stamp+'-'+str(np.random.randint(100,999)),self.time_stamp, self.config['model']['backbone']['type'], {})
 
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         self.log_all = self.config['log']['log_all']
@@ -92,6 +93,11 @@ class BYOLTrainer():
             os.makedirs(save_dir)
         except:
             pass
+
+        #dump config
+        tgt_config_path = os.path.join(save_dir,'config.yaml')
+        with open(tgt_config_path,'w') as outfile:
+            yaml.dump(config, outfile, default_flow_style=False)
 
         """log tools in the running phase"""
         self.steps = 0

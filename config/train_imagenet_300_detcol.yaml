@@ -19,8 +19,8 @@ clustering:
   per_image: false
   gather: false
   no_slic: true
-  weight_color: 1.0
-  weight_spatial: 0.5
+  weight_color: 8.0
+  weight_spatial: 0.0
   scheduler:
     type: 'linear'
     epochs: [0,300]
