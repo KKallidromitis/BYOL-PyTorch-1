@@ -16,15 +16,18 @@ model:
     output_dim: 256
 
 clustering:
-  per_image: false
+  per_image: true
   gather: false
   no_slic: true
+  use_pca: 256 # set to 0 or false if disabled. otherwise num of principal components. 
+  # WARNING: use gather or add_views without PCA may consume significant amount of memory
+  add_views: true #only works without slic
   weight_color: 8.0
   weight_spatial: 0.0
   scheduler:
     type: 'linear'
     epochs: [0,300]
-    values: [128,4]
+    values: [64,4]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],

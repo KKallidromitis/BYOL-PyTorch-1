@@ -50,6 +50,10 @@ class BYOLModel(torch.nn.Module):
         self.kmeans_gather = config['clustering']['gather'] # NOT TESTED
         self.no_slic  = config['clustering']['no_slic']
         self.rank = config['rank']
+        self.add_views =  config['clustering']['add_views']
+        self.use_pca = config['clustering']['use_pca']
+        if self.add_views:
+            assert self.no_slic, "add_views can be true only if explict slic is disabled"
         self.w_color = config['clustering']['weight_color']
         self.w_spatial = config['clustering']['weight_spatial']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
@@ -129,9 +133,12 @@ class BYOLModel(torch.nn.Module):
         if not self.per_image_k_means:
             d_emb = super_pixel_pooled.shape[-1]
             super_pixel_pooled = super_pixel_pooled.view(-1,d_emb)
+        if self.use_pca:
+            _,_,v = torch.linalg.svd(super_pixel_pooled)
+            super_pixel_pooled = super_pixel_pooled @ v[...,:self.use_pca]
         if self.kmeans_gather:
-            _,_,v = torch.pca_lowrank(super_pixel_pooled)
-            super_pixel_pooled = super_pixel_pooled @ v[:,:256]
+            # _,_,v = torch.linalg.sv(super_pixel_pooled)
+            # super_pixel_pooled = super_pixel_pooled @ v[:,:256]
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled
@@ -173,7 +180,12 @@ class BYOLModel(torch.nn.Module):
         # Get spanning view embeddings
         with torch.no_grad():
             if self.n_kmeans < 9999:
-                converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
+                if self.add_views:
+                    converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet)
+                    converted_idx_b = converted_idx_b[:b].contiguous()
+                    converted_idx = converted_idx[:b].contiguous()
+                else:
+                    converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
             else:
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
