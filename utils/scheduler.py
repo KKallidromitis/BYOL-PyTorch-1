@@ -19,6 +19,10 @@ class Scheduler:
         else:
             return k
 
+    def get_lr(self,iter):
+        k = self.get_k(iter)
+        return k
+
 
 class PiecewiseScheduler(Scheduler):
     

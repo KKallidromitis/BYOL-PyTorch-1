@@ -16,18 +16,18 @@ model:
     output_dim: 256
 
 clustering:
-  per_image: true
+  per_image: false
   gather: false
   no_slic: true
-  use_pca: 256 # set to 0 or false if disabled. otherwise num of principal components. 
+  use_pca: 0 # set to 0 or false if disabled. otherwise num of principal components. 
   # WARNING: use gather or add_views without PCA may consume significant amount of memory
-  add_views: true #only works without slic
+  add_views: false #only works without slic
   weight_color: 8.0
   weight_spatial: 0.0
   scheduler:
     type: 'linear'
     epochs: [0,300]
-    values: [64,4]
+    values: [128,4]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
@@ -72,6 +72,11 @@ optimizer:
   total_epochs: 300
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
+  legacy_schedule: false # use old scheduler defined by lr_type
+  scheduler: # a scheduler definition, epochs should be scaled to [0,100], values is a factor multiplied on base_lr
+    type: 'cosine'
+    epochs: [0,100]
+    values: [1.0,0.25]
 
 loss: #src: 3.1
   temperature: 0.1

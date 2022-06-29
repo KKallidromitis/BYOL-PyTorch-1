@@ -47,7 +47,10 @@ class BYOLTrainer():
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
         self.global_batch_size = self.world_size * self.train_batch_size
-        self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
+        self.legacy_schedule_lr = self.config['optimizer']['legacy_schedule']
+        if not self.legacy_schedule_lr:
+            self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
+        self.lr_scheduler = build_scheduler(self.config['optimizer']['scheduler'])
 
         self.num_examples = self.config['data']['num_examples']
         subset = self.config['data'].get("subset", "") #Update num_examples for subsets
@@ -187,7 +190,13 @@ class BYOLTrainer():
         
         if step < self.warmup_steps:
             lr =  step / int(self.warmup_steps) * max_lr #Following deepmind implementation, returns lr = 0. during first step!
-                    
+
+        elif not self.legacy_schedule_lr:
+            max_steps = self.total_steps - self.warmup_steps
+            global_step = np.minimum((step - self.warmup_steps), max_steps)
+            factor = self.lr_scheduler.get_lr( global_step / max_steps * 100)
+            lr = max_lr * factor
+
         elif self.lr_type=='piecewise':
             if step >= (0.96*self.total_steps):
                 lr = self.max_lr/10 
