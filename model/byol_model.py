@@ -199,7 +199,7 @@ class BYOLModel(torch.nn.Module):
                     converted_idx_b = converted_idx_b[:b].contiguous()
                     converted_idx = converted_idx[:b].contiguous()
                 else:
-                    converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
+                    converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet,roi_t) # B X C X 56 X 56, B X 56 X 56
             else:
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)

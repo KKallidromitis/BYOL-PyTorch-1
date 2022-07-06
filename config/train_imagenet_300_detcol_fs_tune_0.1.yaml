@@ -69,7 +69,7 @@ optimizer:
   lr_type: "cosine"
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
-  total_epochs: 301
+  total_epochs: 303
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
   legacy_schedule: false # use old scheduler defined by lr_type
