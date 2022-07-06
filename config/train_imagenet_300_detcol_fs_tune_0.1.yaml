@@ -18,11 +18,11 @@ model:
 clustering:
   per_image: false
   gather: false
-  no_slic: true
+  no_slic: false
   use_pca: 0 # set to 0 or false if disabled. otherwise num of principal components. 
   # WARNING: use gather or add_views without PCA may consume significant amount of memory
   add_views: false #only works without slic
-  weight_color: 8.0
+  weight_color: 0.0
   weight_spatial: 0.0
   scheduler:
     type: 'linear'
@@ -49,7 +49,7 @@ amp:
 
 data:
   image_dir: "./imagenet" #TODO: Change to match Japan Cluster
-  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
+  subset: "" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
   data_workers: 8
@@ -69,14 +69,14 @@ optimizer:
   lr_type: "cosine"
   momentum: 0.9 # src: Deepmind code config
   weight_decay: 1.0e-6
-  total_epochs: 300
+  total_epochs: 301
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
   legacy_schedule: false # use old scheduler defined by lr_type
   scheduler: # a scheduler definition, epochs should be scaled to [0,100], values is a factor multiplied on base_lr
     type: 'cosine'
     epochs: [0,100]
-    values: [1.0,1.0]
+    values: [0.1,0.1]
 
 loss: #src: 3.1
   temperature: 0.1
@@ -84,7 +84,7 @@ loss: #src: 3.1
 
 checkpoint:
   time_stamp:
-  resume_path:
+  resume_path: "/shared/jacklishufan/07_02_07-03_resnet50_300.pth.tar"
   save_epoch: 50
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 

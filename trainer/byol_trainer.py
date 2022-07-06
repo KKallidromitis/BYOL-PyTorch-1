@@ -166,14 +166,14 @@ class BYOLTrainer():
 
             self.start_epoch = checkpoint['epoch']
             self.steps = checkpoint['steps']
-            self.model.load_state_dict(checkpoint['model'], strict=True)
+            self.model.load_state_dict(checkpoint['model'], strict=False)
             self.optimizer.load_state_dict(checkpoint['optimizer'])
             amp.load_state_dict(checkpoint['amp'])
             self.logging.info(f"--> Loaded checkpoint '{model_path}' (epoch {self.start_epoch})")
 
     # save snapshots
     def save_checkpoint(self, epoch):
-        if epoch % self.save_epoch == 0 and self.rank == 0:
+        if (epoch % self.save_epoch == 0 or epoch == self.total_epochs) and self.rank == 0:
             state = {'config': self.config,
                      'epoch': epoch,
                      'steps': self.steps,
