@@ -18,11 +18,11 @@ model:
 clustering:
   per_image: false
   gather: false
-  no_slic: true
+  no_slic: false
   use_pca: 0 # set to 0 or false if disabled. otherwise num of principal components. 
   # WARNING: use gather or add_views without PCA may consume significant amount of memory
-  add_views: false #only works without slic
-  weight_color: 8.0
+  add_views: true #only works without slic
+  weight_color: 0.0
   weight_spatial: 0.0
   scheduler:
     type: 'linear'
@@ -76,7 +76,7 @@ optimizer:
   scheduler: # a scheduler definition, epochs should be scaled to [0,100], values is a factor multiplied on base_lr
     type: 'cosine'
     epochs: [0,100]
-    values: [1.0,1.0]
+    values: [1.0,0]
 
 loss: #src: 3.1
   temperature: 0.1

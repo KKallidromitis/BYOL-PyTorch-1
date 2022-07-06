@@ -52,8 +52,8 @@ class BYOLModel(torch.nn.Module):
         self.rank = config['rank']
         self.add_views =  config['clustering']['add_views']
         self.use_pca = config['clustering']['use_pca']
-        if self.add_views:
-            assert self.no_slic, "add_views can be true only if explict slic is disabled"
+        # if self.add_views:
+        #     assert self.no_slic, "add_views can be true only if explict slic is disabled"
         self.w_color = config['clustering']['weight_color']
         self.w_spatial = config['clustering']['weight_spatial']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
@@ -115,7 +115,7 @@ class BYOLModel(torch.nn.Module):
         labels = torch.LongTensor(labels).cuda()
         return labels
 
-    def do_kmeans(self,raw_image,slic_mask,user_masknet):
+    def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
         b = raw_image.shape[0]
         feats = self.fpn(raw_image)['c4']
         feats = F.normalize(feats,dim=1)
@@ -128,6 +128,8 @@ class BYOLModel(torch.nn.Module):
             super_pixel_pooled = torch.cat((raw_image_downsampled*self.w_color,feats,coords*self.w_spatial),dim=1).permute(0,2,3,1).flatten(1,2).contiguous() # B X 196 X 1027
         else:
             super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
+            if self.add_views:
+                super_pixel = torch.cat([super_pixel,*self.roi_align(to_binary_mask(slic_mask,-1,resize_to=(56,56)),roi_t,14,56)])
             pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb
             super_pixel_pooled = pooled.detach()
         if not self.per_image_k_means:
@@ -151,7 +153,7 @@ class BYOLModel(torch.nn.Module):
             labels = labels[start_idx:end_idx]
         labels = labels.view(b,-1)
         if not self.no_slic:
-            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
+            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)).repeat(3,1,1,1) ,labels).sum(1).long().detach()
             if user_masknet:
                     # USE hirearchl clustering on outputs of masknet
                     raw_masks = self.masknet(feats)
@@ -165,11 +167,23 @@ class BYOLModel(torch.nn.Module):
             converted_idx = labels.view(-1,14,14)
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans,resize_to=(56,56))
         return converted_idx_b,converted_idx
+
+    def roi_align(self,target,roi_t,out_size=7,mask_dim=56):
+        device = target.device
+        idx = torch.LongTensor([1,0,3,2]).to(device)
+        rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+        rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+        flip_1 = roi_t[:,0,4]
+        flip_2 = roi_t[:,1,4]
+        aligned_1 = self.handle_flip(ops.roi_align(target,rois_1,out_size),flip_1) # mask output is B X 16 X 7 X 7
+        aligned_2 = self.handle_flip(ops.roi_align(target,rois_2,out_size),flip_2) # mask output is B X 16 X 7 X 7
+        return aligned_1,aligned_2
+
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
-        idx = torch.LongTensor([1,0,3,2]).cuda()
+        
         # reset k means if necessary
         if self.n_kmeans != clustering_k:
             self.n_kmeans = clustering_k
@@ -181,7 +195,7 @@ class BYOLModel(torch.nn.Module):
         with torch.no_grad():
             if self.n_kmeans < 9999:
                 if self.add_views:
-                    converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet)
+                    converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet,roi_t)
                     converted_idx_b = converted_idx_b[:b].contiguous()
                     converted_idx = converted_idx[:b].contiguous()
                 else:
@@ -194,12 +208,13 @@ class BYOLModel(torch.nn.Module):
             #TODO: Move this to config, mask size before downsample
             mask_dim = 56
             #TODO: Move this to a separate method just as in selective search branch
-            rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-            rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-            flip_1 = roi_t[:,0,4]
-            flip_2 = roi_t[:,1,4]
-            aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
-            aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
+            # rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+            # rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+            # flip_1 = roi_t[:,0,4]
+            # flip_2 = roi_t[:,1,4]
+            # aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
+            # aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
+            aligned_1,aligned_2 = self.roi_align(converted_idx_b,roi_t)
             mask_b,mask_c,h,w =aligned_1.shape
             aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
             aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()
