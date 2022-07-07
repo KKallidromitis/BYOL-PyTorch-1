@@ -153,7 +153,10 @@ class BYOLModel(torch.nn.Module):
             labels = labels[start_idx:end_idx]
         labels = labels.view(b,-1)
         if not self.no_slic:
-            raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)).repeat(3,1,1,1) ,labels).sum(1).long().detach()
+            if self.add_views:
+                raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)).repeat(3,1,1,1) ,labels).sum(1).long().detach()
+            else:
+                raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
             if user_masknet:
                     # USE hirearchl clustering on outputs of masknet
                     raw_masks = self.masknet(feats)
