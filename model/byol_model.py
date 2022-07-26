@@ -79,7 +79,7 @@ class BYOLModel(torch.nn.Module):
 
     def get_feature(self,x):
         if self.encoder_type == 'vit':
-            return self.fpn(x)
+            return self.fpn.forward_features(x)[-2] # 14 x 14 
         else:
             return self.fpn(x)['c4']
             
@@ -117,6 +117,7 @@ class BYOLModel(torch.nn.Module):
         #feats = self.fpn(raw_image)['c4']
         #feats = self.online_network.encoder.forward_features(raw_image) # N X 196 X 768
         feats = self.get_feature(raw_image) # N X C X 14 X 14
+        #breakpoint()
         _,d_feature,_,_ = feats.shape
         super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
         pooled, _ = maskpool(super_pixel,feats) #pooled B X 100 X d_emb

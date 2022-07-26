@@ -4,7 +4,7 @@ model:
   backbone:
     type: "vit"
     pretrained: false
-    feature_resolution: 14 # 14 x 14
+    feature_resolution: 7 # 14 x 14 , 7x7 w/ fpn
   projection:   # src: A.2 of detcon paper
     type: "MLP" 
     input_dim: 768
@@ -50,7 +50,7 @@ data:
   weight: true
   n_kmeans: 9999
   slic_segments: 100
-  train_batch_size: 16 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 4 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false

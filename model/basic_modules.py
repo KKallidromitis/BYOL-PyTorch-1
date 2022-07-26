@@ -169,9 +169,10 @@ class VitWrapper(nn.Module):
         return self.backbone.forward_features
         
     def forward(self,x):
-        feat = self.backbone.forward_features(x).permute(0,2,1)[:,:,1:]
-        n,c,hw = feat.shape
-        return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
+        return self.forward_features(x)[-1] # c5 7x7
+        # feat = self.backbone.forward_features(x).permute(0,2,1)[:,:,1:]
+        # n,c,hw = feat.shape
+        # return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
 
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
