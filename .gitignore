@@ -125,3 +125,4 @@ imagenet
 
 #notebook in root folder
 *.ipynb
+queue.sh

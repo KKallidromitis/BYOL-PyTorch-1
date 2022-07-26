@@ -71,7 +71,7 @@ loss: #src: 3.1
 
 checkpoint:
   time_stamp:
-  resume_path:''
+  resume_path: 
   save_epoch: 50
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 

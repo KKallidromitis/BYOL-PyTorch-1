@@ -8,6 +8,7 @@ from utils.mask_utils import sample_masks
 import torch.nn.functional as F
 import numpy as np
 import timm
+from .vit_mae import vit_base_patch16
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -179,7 +180,8 @@ class EncoderwithProjection(nn.Module):
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
         if net_name == 'vit':
-            base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =True)
+            #base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =True)
+            base_encoder = vit_base_patch16()
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'])
         else:
             base_encoder = models.__dict__[net_name](pretrained=pretrained)
