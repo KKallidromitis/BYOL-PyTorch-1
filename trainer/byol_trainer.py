@@ -8,8 +8,6 @@ import torch
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import yaml
-
-from tensorboardX import SummaryWriter
 import apex
 import wandb
 from apex.parallel import DistributedDataParallel as DDP
@@ -17,6 +15,7 @@ from apex import amp
 
 from model import BYOLModel
 from optimizer import LARS
+from losses import DetconInfoNCECriterion
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
@@ -43,13 +42,16 @@ class BYOLTrainer():
         self.overlap_indicator = self.config['data']['overlap_indicator']
         self.use_weight = self.config['data']['weight']
         
+        # SIMCLR CHANGES
+        self.loss = DetconInfoNCECriterion(config)
+        self.sample_rois = self.config['loss']['mask_rois']
 
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
         self.global_batch_size = self.world_size * self.train_batch_size
         self.legacy_schedule_lr = self.config['optimizer']['legacy_schedule']
-        if not self.legacy_schedule_lr:
-            self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
+        #if not self.legacy_schedule_lr:
+        self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
         self.lr_scheduler = build_scheduler(self.config['optimizer']['scheduler'])
 
         self.num_examples = self.config['data']['num_examples']
@@ -106,8 +108,6 @@ class BYOLTrainer():
         self.steps = 0
         self.log_step = self.config['log']['log_step']
         self.logging = logging_util.get_std_logging()
-        if self.rank == 0:
-            self.writer = SummaryWriter(self.config['log']['log_dir'])
 
     def construct_model(self):
         """get data loader"""
@@ -121,7 +121,6 @@ class BYOLTrainer():
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 
         self.sync_bn = self.config['amp']['sync_bn']
-        self.masknet_on = self.config['model']['masknet']
         self.opt_level = self.config['amp']['opt_level']
         print(f"sync_bn: {self.sync_bn}")
 
@@ -138,9 +137,7 @@ class BYOLTrainer():
         momentum = self.config['optimizer']['momentum']
         weight_decay = self.config['optimizer']['weight_decay']
         exclude_bias_and_bn = self.config['optimizer']['exclude_bias_and_bn']
-        parms = [self.model.online_network, self.model.predictor]
-        if self.config['model']['masknet']:
-            parms.append(self.model.masknet)
+        parms = [self.model.online_network]# self.model.predictor]
         params = params_util.collect_params(parms,exclude_bias_and_bn=exclude_bias_and_bn)
         self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
 
@@ -281,11 +278,15 @@ class BYOLTrainer():
             tflag = time.time()
             #breakpoint()
             q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
-            clustering_k=clustering_k)
-            forward_time.update(time.time() - tflag)
+            clustering_k=clustering_k, num_masks = self.sample_rois)
 
+            forward_time.update(time.time() - tflag)
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+
+            # SIMCLR CHANGE
+            #loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+            #NOTE: WE ARE SAMPLING MASKS TO HANDLE EXTRA MEM NEED FOR EARLY PART OF K SCHED.
+            loss = self.loss(target_z, q, tinds, pinds, min(self.sample_rois, clustering_k))
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -298,10 +299,6 @@ class BYOLTrainer():
             loss_meter.update(loss.item(), view1.size(0))
 
             tflag = time.time()
-            if self.steps % self.log_step == 0 and self.rank == 0:
-                self.writer.add_scalar('lr', round(self.optimizer.param_groups[0]['lr'], 5), self.steps)
-                self.writer.add_scalar('mm', round(self.mm, 5), self.steps)
-                self.writer.add_scalar('loss', loss_meter.val, self.steps)
             log_time.update(time.time() - tflag)
 
             batch_time.update(time.time() - end)
@@ -315,15 +312,15 @@ class BYOLTrainer():
                     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
                     'mm': round(self.mm, 5),
                     'loss': round(loss_meter.val, 5),
-                    "eh_obj":round(eh_obj.item(),5),
-                    "eh_dist":round(eh_dist.item(),5),
-                    "inv_loss":round(inv_loss.item(),5),
-                    "mask_loss":round(mask_loss.item(),5),
+                    # "eh_obj":round(eh_obj.item(),5),
+                    # "eh_dist":round(eh_dist.item(),5),
+                    # "inv_loss":round(inv_loss.item(),5),
+                    # "mask_loss":round(mask_loss.item(),5),
                     "num_segs":round(num_segs.item(),5),
                     'Batch Time': round(batch_time.val, 5),
                     'Data Time': round(data_time.val, 5),
                     "K-clustering":clustering_k,
-                    "num_indicator":round(num_indicator.item(),5),
+                    # "num_indicator":round(num_indicator.item(),5),
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
@@ -366,4 +363,3 @@ class BYOLTrainer():
                 'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
                 'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
             })
-

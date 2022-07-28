@@ -1,19 +1,18 @@
 model:
   base_momentum: 0.99
-  masknet: false
   backbone:
     type: "resnet50"
     pretrained: false
   projection:   # src: A.2 of detcon paper
     type: "MLP" 
     input_dim: 2048
-    hidden_dim: 4096
-    output_dim: 256
-  predictor:
+    hidden_dim: 2048
+    output_dim: 128 #SIMCLR
+  predictor: #SIMCLR: Not used for simclr loss
     type: "MLP"
     input_dim: 256
     hidden_dim: 4096
-    output_dim: 256
+    output_dim: -1
 
 clustering:
   per_image: false
@@ -21,7 +20,7 @@ clustering:
   no_slic: false
   use_pca: 0 # set to 0 or false if disabled. otherwise num of principal components. 
   # WARNING: use gather or add_views without PCA may consume significant amount of memory
-  add_views: true #only works without slic
+  add_views: false #only works without slic
   weight_color: 0.0
   weight_spatial: 0.0
   scheduler:
@@ -48,7 +47,7 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "./imagenet" #TODO: Change to match Japan Cluster
+  image_dir: "/home/akash/ilsvrc_1p" #TODO: Change to match Japan Cluster
   subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
@@ -72,7 +71,7 @@ optimizer:
   total_epochs: 300
   warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
   exclude_bias_and_bn: true
-  legacy_schedule: false # use old scheduler defined by lr_type
+  legacy_schedule: true #SIMCLR
   scheduler: # a scheduler definition, epochs should be scaled to [0,100], values is a factor multiplied on base_lr
     type: 'cosine'
     epochs: [0,100]
@@ -80,16 +79,16 @@ optimizer:
 
 loss: #src: 3.1
   temperature: 0.1
-  mask_rois: 16
+  mask_rois: 16 #SIMCLR PARAM
 
 checkpoint:
   time_stamp:
   resume_path:
-  save_epoch: 50
+  save_epoch: 100
   ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:
-  log_step: 10
+  log_step: 1
   log_dir:
   log_all: False
 

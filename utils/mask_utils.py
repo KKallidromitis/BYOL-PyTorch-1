@@ -37,32 +37,26 @@ def convert_binary_mask(mask,max_mask_id=257,pool_size=7):
     binary_mask = binary_mask.reshape(batch_size,max_mask_id,pool_size*pool_size)
     #breakpoint()
     return binary_mask
-    binary_mask = torch.reshape(binary_mask,(batch_size,max_mask_id,pool_size*pool_size)).permute(0,2,1) #64,49,256
-    binary_mask = torch.argmax(binary_mask, axis=-1)
-    binary_mask = torch.eye(max_mask_id)[binary_mask]
-    binary_mask = binary_mask.permute(0, 2, 1)
-    return binary_mask
 
-def sample_masks(binary_mask,n_masks=16):
-    batch_size=binary_mask.shape[0]
-    #breakpoint()
-    mask_exists = torch.greater(binary_mask.sum(-1), 1e-3)
-    mask_exists = (mask_exists[:batch_size//2].float()+mask_exists[batch_size//2:].float() )>=2
+def sample_masks(binary_mask, n_masks=16):
+    # SIMCLR CHANGE: Takes in one-hot label map of shape(B, K, H, W) where K is num of masks from kmeans
+    batch_size, k = binary_mask.shape[0:2]
+    mask_exists = torch.greater(binary_mask.view(batch_size, k, -1).sum(-1), 1e-3)
     sel_masks = mask_exists.float() + 0.00000000001
-    #breakpoint()
     sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
     sel_masks = torch.log(sel_masks)
-    sel_masks = sel_masks[:,1:] # Do not sample channel0==Background
     
     dist = torch.distributions.categorical.Categorical(logits=sel_masks)
-    mask_ids = dist.sample([n_masks]).T
+    mask_ids = dist.sample([n_masks]).T 
     mask_ids = mask_ids.repeat([2,1])
     #breakpoint()
     #mask_ids[32:]=mask_ids[:32]
-    mask_ids += 1 # never sample background
-    sample_mask = torch.stack([binary_mask[b][mask_ids[b]] for b in range(batch_size)])
-    
-    return sample_mask,mask_ids
+    # mask_ids += 1 # never sample background
+    # sample_mask = torch.stack([binary_mask[b][mask_ids[b]] for b in range(batch_size)])
+    # sample_mask = sample_mask.repeat([2,1,1,1])
+    #SIMCLR CHANGE
+    # We just need mask_ids
+    return None,mask_ids
 
 def maskpool(mask,x):
     '''
@@ -92,11 +86,11 @@ def to_binary_mask(label_map,c_m=-1,resize_to=None):
 
 
 def refine_mask(src_label,target_label,mask_dim,src_dim=16):
-        # B X H_mask X W_mask
-        n_tgt = torch.max(target_label).item()+1
-        slic_mask = to_binary_mask(target_label,n_tgt,(mask_dim,mask_dim))  # B X 100 X H_mask X W_mask
-        masknet_label_map = to_binary_mask(src_label,src_dim,(mask_dim,mask_dim)) # binary B X 16 X H_mask X W_mask
-        pooled,_ =maskpool(slic_mask,masknet_label_map) # B X NUM_SLIC X N_MASKS
-        pooled_ids = torch.argmax(pooled,-1) # B X NUM_SLIC  X 1 => label map
-        converted_idx = torch.einsum('bchw,bc->bchw',slic_mask ,pooled_ids).sum(1).long().detach() #label map in hw space
-        return converted_idx
+    # B X H_mask X W_mask
+    n_tgt = torch.max(target_label).item()+1
+    slic_mask = to_binary_mask(target_label,n_tgt,(mask_dim,mask_dim))  # B X 100 X H_mask X W_mask
+    masknet_label_map = to_binary_mask(src_label,src_dim,(mask_dim,mask_dim)) # binary B X 16 X H_mask X W_mask
+    pooled,_ =maskpool(slic_mask,masknet_label_map) # B X NUM_SLIC X N_MASKS
+    pooled_ids = torch.argmax(pooled,-1) # B X NUM_SLIC  X 1 => label map
+    converted_idx = torch.einsum('bchw,bc->bchw',slic_mask ,pooled_ids).sum(1).long().detach() #label map in hw space
+    return converted_idx

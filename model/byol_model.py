@@ -1,11 +1,10 @@
 #-*- coding:utf-8 -*-
 import torch
-from .basic_modules import EncoderwithProjection, FCNMaskNetV2, Predictor, Masknet, SpatialAttentionMasknet,FCNMaskNet
-from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask,maskpool,refine_mask
+from .basic_modules import EncoderwithProjection, Predictor
+from utils.mask_utils import convert_binary_mask,sample_masks,to_binary_mask, maskpool,refine_mask
 from torchvision import ops
 import torch.nn.functional as F
 from torchvision.models._utils import IntermediateLayerGetter
-from sklearn.cluster import AgglomerativeClustering
 from utils.kmeans.minibatchkmeans import MiniBatchKMeans
 from utils.kmeans.kmeans import KMeans
 from utils.kmeans.dataset import KMeansDataset
@@ -23,17 +22,12 @@ class BYOLModel(torch.nn.Module):
         self.online_network = EncoderwithProjection(config)
 
         # target network
-        self.target_network = EncoderwithProjection(config)
+        # SIMCLR CHANGE (also removed predictor)
+        self.target_network = self.online_network #EncoderwithProjection(config)
         
-        #mask net
-        
-        self.masknet_on = config['model']['masknet']
-        if self.masknet_on:
-            self.masknet = FCNMaskNetV2()
-        # predictor
-        self.predictor = Predictor(config)
+
         self.over_lap_mask = config['data'].get('over_lap_mask',True)
-        self._initializes_target_network()
+        # self._initializes_target_network() #SIMCLR CHANGE
         self._fpn = None # not actual FPN, but pesudoname to get c4, TODO: Change the confusing name
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
@@ -56,8 +50,6 @@ class BYOLModel(torch.nn.Module):
         #     assert self.no_slic, "add_views can be true only if explict slic is disabled"
         self.w_color = config['clustering']['weight_color']
         self.w_spatial = config['clustering']['weight_spatial']
-        self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
-        self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
 
     @torch.no_grad()
     def _initializes_target_network(self):
@@ -69,13 +61,6 @@ class BYOLModel(torch.nn.Module):
     def _update_target_network(self, mm):
         """Momentum update of target network"""
         for param_q, param_k in zip(self.online_network.parameters(), self.target_network.parameters()):
-            param_k.data.mul_(mm).add_(1. - mm, param_q.data)
-
-    @torch.no_grad()
-    def _update_mask_network(self, mm):
-        """Momentum update of maks network"""
-        #TODO: set this up properly, now masknet just use online encoder
-        for param_q, param_k in zip(self.online_network.encoder.parameters(), self.masknet.encoder.parameters()):
             param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
     @property
@@ -100,20 +85,20 @@ class BYOLModel(torch.nn.Module):
         out = torch.where(flip==1,flipped,aligned_mask)
         return out
 
-    def get_label_map(self,masks):
-        #
-        b,c,h,w = masks.shape
-        batch_data = masks.permute(0,2,3,1).reshape(b,h*w,32).detach().cpu()
-        labels = []
-        for data in batch_data:
-            agg = self.agg.fit(data)
-            if np.max(agg.labels_)>15:
-                agg = self.agg_backup.fit(data)
-            label = agg.labels_.reshape(h,w)
-            labels.append(label)
-        labels = np.stack(labels)
-        labels = torch.LongTensor(labels).cuda()
-        return labels
+    # def get_label_map(self,masks):
+    #     #
+    #     b,c,h,w = masks.shape
+    #     batch_data = masks.permute(0,2,3,1).reshape(b,h*w,32).detach().cpu()
+    #     labels = []
+    #     for data in batch_data:
+    #         agg = self.agg.fit(data)
+    #         if np.max(agg.labels_)>15:
+    #             agg = self.agg_backup.fit(data)
+    #         label = agg.labels_.reshape(h,w)
+    #         labels.append(label)
+    #     labels = np.stack(labels)
+    #     labels = torch.LongTensor(labels).cuda()
+    #     return labels
 
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
         b = raw_image.shape[0]
@@ -159,6 +144,7 @@ class BYOLModel(torch.nn.Module):
                 raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)) ,labels).sum(1).long().detach()
             if user_masknet:
                     # USE hirearchl clustering on outputs of masknet
+                    raise NotImplementedError()
                     raw_masks = self.masknet(feats)
                     converted_idx = self.get_label_map(raw_masks)
                     converted_idx = refine_mask(converted_idx,slic_mask,56).detach()
@@ -182,7 +168,7 @@ class BYOLModel(torch.nn.Module):
         aligned_2 = self.handle_flip(ops.roi_align(target,rois_2,out_size),flip_2) # mask output is B X 16 X 7 X 7
         return aligned_1,aligned_2
 
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64, num_masks=16):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
@@ -222,24 +208,31 @@ class BYOLModel(torch.nn.Module):
             aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
             aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()
         # If this is on, only mask in intersetved area will be calculated
-        
         if self.over_lap_mask:
             intersection = input_masks.float()
             intersec_masks_1 = F.adaptive_avg_pool2d(intersection[:,0,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
             intersec_masks_2 = F.adaptive_avg_pool2d(intersection[:,1,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
             aligned_1 = aligned_1 * intersec_masks_1
             aligned_2 = aligned_2 * intersec_masks_2
-        mask_ids = None
+        
+        # Mask IDs for TIND and PIND
+        mask_ids = None #for detcon-b code compatibility
         masks = torch.cat([aligned_1, aligned_2])
         masks_inv = torch.cat([aligned_2, aligned_1])
         num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids))
-        # target network forward
-        with torch.no_grad():
-            self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks_inv.to('cuda'),mask_ids,mask_ids)
-            target_z = target_z.detach().clone()
-        
 
-        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+        #SIMCLR CHANGE
+        q, masks, pinds = self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids, 
+                                                to_binary_mask(converted_idx), 
+                                                min(num_masks, self.n_kmeans))
+
+        # For SIMCLR
+        tinds = pinds
+        target_z = q
+        # # target network forward
+        # with torch.no_grad():
+        #     self._update_target_network(mm)
+        #     target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks_inv.to('cuda'),mask_ids,mask_ids)
+        #     target_z = target_z.detach().clone()=
+        return q, target_z, pinds, tinds, masks,raw_masks,raw_mask_target,num_segs,converted_idx
 

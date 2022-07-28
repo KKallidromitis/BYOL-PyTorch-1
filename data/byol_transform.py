@@ -371,7 +371,9 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224,crop_cordinates=None):
     #i, j, h, w = crop_cordinates
     t_list = []
-    color_jitter = transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)
+    # SIMCLR CHANGE (https://arxiv.org/pdf/2002.05709.pdf pg 12 of pdf)
+    s = 1.0
+    color_jitter = transforms.ColorJitter(0.8*s, 0.8*s, 0.8*s, 0.2*s)
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     if stage in ('train', 'val'):
