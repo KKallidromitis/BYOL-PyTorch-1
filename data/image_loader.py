@@ -41,7 +41,7 @@ class ImageLoader():
 
     def get_dataset(self, stage):
 
-        image_dir = os.path.join(self.image_dir, "images", f"{'train' if stage in ('train', 'ft') else 'val'}")
+        image_dir = os.path.join(self.image_dir, f"{'train' if stage in ('train', 'ft') else 'val'}")
         if self.mask_type == "":
             mask_file= None
             mask_file_path = None #If we don't need to load we can avoid
@@ -50,7 +50,7 @@ class ImageLoader():
             mask_file_path = os.path.join(self.image_dir,'masks','train_tf')
         
         transform1 = get_transform(stage)
-        transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
+        transform2 = get_transform(stage)
         transform3 = get_transform('raw')
 
         transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,slic_segments=self.slic_segments,do_slic=self.do_slic)
