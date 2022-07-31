@@ -23,12 +23,27 @@ def get_differentialble_transform(i,j,h,w,flip,crop_size):
             return x
         return g
 
-def to_slic(img,**kwargs):
-    img = img.permute(1, 2, 0)
-    h, w, c = img.size()
-    seg = slic(img.to(torch.double).numpy(), start_label=0, **kwargs)
-    seg = torch.from_numpy(seg)
-    return seg.view(1, h, w)
+def create_patch_mask(image,segments):
+        dims=list(np.floor_divide(image.shape[1:],segments))
+
+        mask=torch.hstack([torch.cat([torch.zeros(dims[0],dims[1])+i+(j*(segments[0])) 
+                                      for i in range(segments[0])]) for j in range(segments[1])])
+
+        mods = list(np.mod(image.shape[1:],segments))
+        if mods[0]!=0:
+            mask = torch.cat([mask,torch.stack([mask[-1,:] for i in range(mods[0])])])
+        if mods[1]!=0:
+            mask = torch.hstack([mask,torch.stack([mask[:,-1] for i in range(mods[1])]).T])
+
+        return mask.long()
+
+def to_slic(img,n_segments,*kwargs):
+    # img = img.permute(1, 2, 0)
+    # h, w, c = img.size()
+    seg = create_patch_mask(img,(n_segments,n_segments))
+    #seg = slic(img.to(torch.double).numpy(), start_label=0, **kwargs)
+    #seg = torch.from_numpy(seg)
+    return seg.unsqueeze(0)
 
 class MultiViewDataInjector():
     def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224,slic_segments=100,do_slic=True):

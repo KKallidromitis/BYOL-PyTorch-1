@@ -27,7 +27,7 @@ clustering:
   scheduler:
     type: 'linear'
     epochs: [0,300]
-    values: [128,4]
+    values: [14,2]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
