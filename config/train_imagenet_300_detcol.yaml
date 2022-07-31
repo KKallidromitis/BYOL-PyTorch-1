@@ -55,6 +55,7 @@ data:
   data_workers: 8
   overlap_indicator: true 
   weight: false
+  slic_only_schedule: true
   n_kmeans: 9999
   slic_segments: 100
   train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
