@@ -119,8 +119,8 @@ class BYOLModel(torch.nn.Module):
 
     def get_spatial_mask(self,dimension,batch_size):
         coords = torch.stack(torch.meshgrid(torch.arange(dimension, device='cuda'), torch.arange(dimension, device='cuda'),indexing='ij'), 0)
-        coords = coords[0] * 14 + coords[1]
-        return coords # H X W
+        coords = coords[0] * dimension + coords[1]
+        return coords.unsqueeze(0).repeat(batch_size,1,1) # H X W
 
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
         b = raw_image.shape[0]
@@ -216,8 +216,12 @@ class BYOLModel(torch.nn.Module):
                     converted_idx = converted_idx[:b].contiguous()
                 else:
                     converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet,roi_t) # B X C X 56 X 56, B X 56 X 56
-            else:
+            elif not self.no_slic:
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
+                converted_idx = torch.argmax(converted_idx_b,1)
+            else: # no slic
+                spatial_map = self.get_spatial_mask(14,b) # B X H X W
+                converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             raw_masks = torch.ones(b,1,0,0).cuda()
             raw_mask_target = converted_idx
