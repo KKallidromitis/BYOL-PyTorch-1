@@ -170,7 +170,7 @@ class EncoderwithProjection(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
         
-    def forward(self, x, masks,mask_ids, mnet=None):
+    def forward(self, x, masks,mask_ids, mnet=None,use_mask=True):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
         #breakpoint()
@@ -181,16 +181,18 @@ class EncoderwithProjection(nn.Module):
         ## Passed in mask, direct pooling
         bs, emb, emb_x, emb_y  = x.shape
         x = x.permute(0,2,3,1) # (B,7,7,2048)
-
+        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb]) # (B,49,2048)
         #breakpoint()
-        masks_area = masks.sum(axis=-1, keepdims=True)
-        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
-        #smpl_masks = torch.ones((bs,1,49))
-        #Overwreite with standard BYOL
-        #breakpoint()
-        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
-        #breakpoint()
-        x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
+        if use_mask:
+            masks_area = masks.sum(axis=-1, keepdims=True)
+            smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
+            #smpl_masks = torch.ones((bs,1,49))
+            #Overwreite with standard BYOL
+            #breakpoint()
+            #breakpoint()
+            x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
+        else:
+            x = embedding_local
         
         x = self.projetion(x)
         return x, mask_ids

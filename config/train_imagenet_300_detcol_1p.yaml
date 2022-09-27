@@ -18,7 +18,7 @@ model:
 clustering:
   per_image: false
   gather: false
-  no_slic: false
+  no_slic: true
   use_pca: 0 # set to 0 or false if disabled. otherwise num of principal components. 
   # WARNING: use gather or add_views without PCA may consume significant amount of memory
   add_views: true #only works without slic
@@ -28,7 +28,7 @@ clustering:
   scheduler:
     type: 'linear'
     epochs: [0,300]
-    values: [128,4]
+    values: [9999,9999]
     # config = {
     #     "type":"cosine",
     #     "epochs":[0,300],
@@ -50,7 +50,7 @@ amp:
 
 data:
   image_dir: "./imagenet" #TODO: Change to match Japan Cluster
-  subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
+  subset: "imagenet100" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
   data_workers: 8
@@ -58,7 +58,7 @@ data:
   weight: false
   n_kmeans: 9999
   slic_segments: 100
-  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
+  train_batch_size: 256 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
   val_batch_size: 32 #  Should not matter
   dual_views: true
   over_lap_mask: false
@@ -82,13 +82,13 @@ optimizer:
 loss: #src: 3.1
   temperature: 0.1
   mask_rois: 16
-  type: k-means # new loss
+  type: byol # new loss
 
 checkpoint:
   time_stamp:
   resume_path:
   save_epoch: 50
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
+  ckpt_path: "/shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar"
 
 log:
   log_step: 10

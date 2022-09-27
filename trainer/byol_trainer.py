@@ -42,6 +42,7 @@ class BYOLTrainer():
         self.warmup_epochs = self.config['optimizer']['warmup_epochs']
         self.overlap_indicator = self.config['data']['overlap_indicator']
         self.use_weight = self.config['data']['weight']
+        self.k_means_loss = config['loss']['type'] == 'k-means'
         
 
         self.train_batch_size = self.config['data']['train_batch_size']
@@ -54,7 +55,7 @@ class BYOLTrainer():
 
         self.num_examples = self.config['data']['num_examples']
         subset = self.config['data'].get("subset", "") #Update num_examples for subsets
-        if subset == "imagenet100":
+        if subset == "":
             self.num_examples = 126689
         elif subset == "imagenet1p":
             self.num_examples = 12811
@@ -182,6 +183,7 @@ class BYOLTrainer():
                      'amp': amp.state_dict()
                     }
             torch.save(state, self.ckpt_path.format(epoch))
+            del state
 
     def adjust_learning_rate(self, step):
         """learning rate warm up and decay"""
@@ -218,7 +220,10 @@ class BYOLTrainer():
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
     def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
-        return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
+        if self.k_means_loss:
+            return self._forward_k_means_loss(preds, targets,masks,raw_mask,mask_target)
+        else:
+            return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
     
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
         zero = torch.tensor(0.0)
@@ -235,6 +240,34 @@ class BYOLTrainer():
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
         inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
+        if weights.sum() == 0:
+            inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
+        else:
+            inv_loss = inv_loss.sum() / weights.sum()        
+    
+        return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
+    
+    def _forward_k_means_loss(self, preds, targets,masks,raw_mask,mask_target):
+        zero = torch.tensor(0.0)
+        weights = masks.sum(dim=-1).detach()
+        mask_batch_size = masks.shape[0] // 2
+        mask_exists = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
+        if self.use_weight:
+            weights =  (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+        else:
+            weights = torch.ones_like(weights[:mask_batch_size])
+        if self.overlap_indicator:
+            weights *= mask_exists
+        weights = weights.repeat([2,1])
+        preds = F.normalize(preds, dim=-1) 
+        targets = F.normalize(targets, dim=-1) 
+        b,n_p,h = preds.shape # B X N_pixelx X Dim
+        _,n_k,_ = targets.shape
+        inv_loss = ((preds.view(b,n_p,1,h)-targets.view(b,1,n_k,h))**2).sum(dim=-1)  # B X N_pixelx X n_k 
+        averaged_mask = masks / masks.sum(dim=1,keepdims=True) # B X N_k X N_pixelx
+        averaged_mask = averaged_mask.permute(0,2,1)# B X  N_pixelx X N_k 
+        inv_loss = (inv_loss * averaged_mask).sum(dim=1) # B X  X N_k 
+        inv_loss *= weights
         if weights.sum() == 0:
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:

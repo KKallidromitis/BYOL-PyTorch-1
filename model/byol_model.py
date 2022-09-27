@@ -26,7 +26,7 @@ class BYOLModel(torch.nn.Module):
         self.target_network = EncoderwithProjection(config)
         
         #mask net
-        
+        self.k_means_loss = config['loss']['type'] == 'k-means'
         self.masknet_on = config['model']['masknet']
         if self.masknet_on:
             self.masknet = FCNMaskNetV2()
@@ -39,7 +39,10 @@ class BYOLModel(torch.nn.Module):
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
         self.per_image_k_means = config['clustering']['per_image']
+        self.clustering_batchsize = config['clustering']['batch_size']
         if self.per_image_k_means:
+            self.clustering_batchsize = 0 # ignore when per image=true
+        if self.per_image_k_means or self.clustering_batchsize > 0:
             self.kmeans_class = BatchwiseKMeans
         else:
             self.kmeans_class = KMeans
@@ -93,7 +96,6 @@ class BYOLModel(torch.nn.Module):
         '''
         _,c,h,w = aligned_mask.shape
         b = len(flip)
-        #breakpoint()
         flip = flip.repeat(c*h*w).reshape(c,h,w,b) # C X H X W X B
         flip = flip.permute(3,0,1,2)
         flipped = aligned_mask.flip(-1)
@@ -114,6 +116,11 @@ class BYOLModel(torch.nn.Module):
         labels = np.stack(labels)
         labels = torch.LongTensor(labels).cuda()
         return labels
+
+    def get_spatial_mask(self,dimension,batch_size):
+        coords = torch.stack(torch.meshgrid(torch.arange(dimension, device='cuda'), torch.arange(dimension, device='cuda'),indexing='ij'), 0)
+        coords = coords[0] * 14 + coords[1]
+        return coords # H X W
 
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
         b = raw_image.shape[0]
@@ -144,14 +151,20 @@ class BYOLModel(torch.nn.Module):
             super_pixel_pooled_large = gather_from_all(super_pixel_pooled)
         else:
             super_pixel_pooled_large = super_pixel_pooled
+        if self.clustering_batchsize:
+            assert b % self.clustering_batchsize == 0
+            super_pixel_pooled_large = super_pixel_pooled_large.view(b//self.clustering_batchsize,-1,d_emb)
         labels = self.kmeans.fit_transform(super_pixel_pooled_large) # B X 100 
+        if self.clustering_batchsize:
+            labels = labels[0]
+            labels = labels.reshape(b,-1)
         if self.per_image_k_means:
             labels = labels[0] #second return is centroid
         if self.kmeans_gather:
             start_idx =  self.rank *b
             end_idx = start_idx + b
             labels = labels[start_idx:end_idx]
-        labels = labels.view(b,-1)
+        labels = labels.view(b,-1).to(slic_mask.device)
         if not self.no_slic:
             if self.add_views:
                 raw_mask_target =  torch.einsum('bchw,bc->bchw',to_binary_mask(slic_mask,-1,(56,56)).repeat(3,1,1,1) ,labels).sum(1).long().detach()
@@ -233,7 +246,8 @@ class BYOLModel(torch.nn.Module):
         masks = torch.cat([aligned_1, aligned_2])
         masks_inv = torch.cat([aligned_2, aligned_1])
         num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids))
+        online_pool = not self.k_means_loss 
+        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids,online_pool))
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
