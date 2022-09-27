@@ -55,7 +55,7 @@ class BYOLTrainer():
 
         self.num_examples = self.config['data']['num_examples']
         subset = self.config['data'].get("subset", "") #Update num_examples for subsets
-        if subset == "":
+        if subset == "imagenet100":
             self.num_examples = 126689
         elif subset == "imagenet1p":
             self.num_examples = 12811
