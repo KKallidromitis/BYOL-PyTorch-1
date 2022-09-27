@@ -11,7 +11,6 @@ import yaml
 
 from tensorboardX import SummaryWriter
 import apex
-import wandb
 from apex.parallel import DistributedDataParallel as DDP
 from apex import amp
 
@@ -20,7 +19,6 @@ from optimizer import LARS
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
-from utils.visualize import wandb_dump_img
 from utils.kmeans.kmeans import KMeans
 from utils.scheduler import build_scheduler
 
@@ -90,9 +88,13 @@ class BYOLTrainer():
         save_dir = '/'.join(self.ckpt_path.split('/')[:-1])
         self.log_all = self.config['log']['log_all']
         self.cross_entrophy_loss = torch.nn.CrossEntropyLoss()
-        if self.gpu==0 or self.log_all:
-            wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
         
+        """Wandb Log"""
+        self.enable_wandb = self.config['log']['enable_wandb']
+        if self.enable_wandb:
+            import wandb
+            if self.gpu==0 or self.log_all:
+                wandb.init(project="r2o_pretrain",name = save_dir+'_gpu_'+str(self.rank))
         try:
             os.makedirs(save_dir)
         except:
@@ -341,25 +343,28 @@ class BYOLTrainer():
             end = time.time()
             #import ipdb;ipdb.set_trace()
             # Print log info
+            # Print log info
             if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
-                
-                # Log per batch stats to wandb (average per epoch is also logged at the end of function)
-                wandb.log({
-                    'lr': round(self.optimizer.param_groups[0]["lr"], 5),
-                    'mm': round(self.mm, 5),
-                    'loss': round(loss_meter.val, 5),
-                    "eh_obj":round(eh_obj.item(),5),
-                    "eh_dist":round(eh_dist.item(),5),
-                    "inv_loss":round(inv_loss.item(),5),
-                    "mask_loss":round(mask_loss.item(),5),
-                    "num_segs":round(num_segs.item(),5),
-                    'Batch Time': round(batch_time.val, 5),
-                    'Data Time': round(data_time.val, 5),
-                    "K-clustering":clustering_k,
-                    "num_indicator":round(num_indicator.item(),5),
-                    'Forward Time': round(forward_time.val, 5),
-                    'Backward Time': round(backward_time.val, 5),
-                })
+                if self.enable_wandb:
+                    import wandb
+                    from utils.visualize import wandb_dump_img
+                    # Log per batch stats to wandb (average per epoch is also logged at the end of function)
+                    wandb.log({
+                        'lr': round(self.optimizer.param_groups[0]["lr"], 5),
+                        'mm': round(self.mm, 5),
+                        'loss': round(loss_meter.val, 5),
+                        "eh_obj":round(eh_obj.item(),5),
+                        "eh_dist":round(eh_dist.item(),5),
+                        "inv_loss":round(inv_loss.item(),5),
+                        "mask_loss":round(mask_loss.item(),5),
+                        "num_segs":round(num_segs.item(),5),
+                        'Batch Time': round(batch_time.val, 5),
+                        'Data Time': round(data_time.val, 5),
+                        "K-clustering":clustering_k,
+                        "num_indicator":round(num_indicator.item(),5),
+                        'Forward Time': round(forward_time.val, 5),
+                        'Backward Time': round(backward_time.val, 5),
+                    })
                 if  (self.steps//self.log_step) % 5 == 1:
                     # img_mask = mask_target[0].detach().cpu()
                     # applied_mask = applied_mask[0].detach().cpu()
@@ -376,7 +381,8 @@ class BYOLTrainer():
                     mh,mw,mc = mask_visual.shape
                     # mask_visual = mask_visual.view(mh*mw,mc)
                     # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+                    if self.enable_wandb:
+                        wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
@@ -390,13 +396,14 @@ class BYOLTrainer():
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
             images, masks,diff_transfrom = prefetcher.next()
-        if self.gpu == 0 or self.log_all: 
-            # Log averages at end of Epoch
-            wandb.log({
-                'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
-                'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
-                'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
-                'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
-                'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
-            })
+        if self.enable_wandb:
+            if self.gpu == 0 or self.log_all: 
+                # Log averages at end of Epoch
+                wandb.log({
+                    'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
+                    'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
+                    'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
+                    'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
+                    'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
+                })
 

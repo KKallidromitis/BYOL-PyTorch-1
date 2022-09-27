@@ -26,7 +26,7 @@ clustering:
   weight_spatial: 0.0
   batch_size: 0
   scheduler:
-    type: 'linear'
+    type: 'cosine'
     epochs: [0,300]
     values: [128,4]
     # config = {
@@ -49,7 +49,7 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "./imagenet" #TODO: Change to match Japan Cluster
+  image_dir: "/home/kkallidromitis/data/imagenet" #TODO: Change to match Japan Cluster
   subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
@@ -94,6 +94,7 @@ log:
   log_step: 10
   log_dir:
   log_all: False
+  enable_wandb: False
 
 stage: "train"
 distributed: True
