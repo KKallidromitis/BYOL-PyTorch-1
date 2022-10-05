@@ -12,6 +12,7 @@ from torchvision.datasets.folder import default_loader,make_dataset,IMG_EXTENSIO
 from pycocotools.coco import COCO
 import os
 from skimage.segmentation import slic
+from skimage.segmentation import felzenszwalb
 
 
 def get_differentialble_transform(i,j,h,w,flip,crop_size):
@@ -29,6 +30,14 @@ def to_slic(img,**kwargs):
     seg = slic(img.to(torch.double).numpy(), start_label=0, **kwargs)
     seg = torch.from_numpy(seg)
     return seg.view(1, h, w)
+
+def to_fh(img,**kwargs):
+    img = img.permute(1, 2, 0)
+    h, w, c = img.size()
+    seg = felzenszwalb(img.to(torch.double).numpy(), scale=1000,min_size=1000, **kwargs)
+    seg = torch.from_numpy(seg)
+    return seg.view(1, h, w)
+    
 
 class MultiViewDataInjector():
     def __init__(self, transform_list,over_lap_mask=True,flip_p=0.5,crop_size=224,slic_segments=100,do_slic=True):

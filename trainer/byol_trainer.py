@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import yaml
+from torch.utils.data import Subset
 
 from tensorboardX import SummaryWriter
 import apex
@@ -21,6 +22,7 @@ from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
 from utils.kmeans.kmeans import KMeans
 from utils.scheduler import build_scheduler
+from utils.knn import build_imagenet_sampler,kNN
 
 class BYOLTrainer():
     def __init__(self, config):
@@ -111,6 +113,31 @@ class BYOLTrainer():
         self.logging = logging_util.get_std_logging()
         if self.rank == 0:
             self.writer = SummaryWriter(self.config['log']['log_dir'])
+
+        # eval
+        self.knn = config['eval']['knn']
+        self.eval_step = config['eval']['eval_step']
+        self.num_replicas = config['world_size']
+        self.rank = config['rank']
+        dataset_eval, _, _ = build_imagenet_sampler(config,self.num_replicas,self.rank)
+        n_eval = np.arange(len(dataset_eval))
+        knn_train_size = int(0.9 * len(n_eval))
+        knn_eval_size = int(0.1 * len(n_eval))
+        np.random.shuffle(n_eval)
+        idx_eval = n_eval
+        idx_eval_train = idx_eval[:knn_train_size]
+        idx_eval_test = idx_eval[knn_train_size:knn_train_size+knn_eval_size]
+        dataset_eval_train = Subset(dataset_eval,idx_eval_train)
+        dataset_eval_test= Subset(dataset_eval,idx_eval_test)
+        k_nn_batch_size = 32
+        sampler_eval_train = torch.utils.data.DistributedSampler(
+            dataset_eval_train, num_replicas=self.num_replicas, rank=self.rank, shuffle=True
+        )
+        sampler_eval_test = torch.utils.data.DistributedSampler(
+            dataset_eval_test, num_replicas=self.num_replicas, rank=self.rank, shuffle=True
+        )
+        self.data_loader_eval_train = torch.utils.data.DataLoader(dataset_eval_train,batch_size=k_nn_batch_size,sampler=sampler_eval_train,num_workers=4)
+        self.data_loader_eval_test = torch.utils.data.DataLoader(dataset_eval_test,batch_size=k_nn_batch_size,sampler=sampler_eval_test,num_workers=4)
 
     def construct_model(self):
         """get data loader"""
@@ -295,6 +322,14 @@ class BYOLTrainer():
         i = 0
         use_masknet = False # epoch > 30
         #breakpoint()
+        if self.steps % self.eval_step == 0 and self.knn > 0:
+                self.model.eval()
+                net = self.model.module.online_network.encoder
+                net.eval()
+                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
+                net.train()
+                del net
+                self.model.train()
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)

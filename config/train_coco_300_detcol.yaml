@@ -16,6 +16,7 @@ model:
     output_dim: 256
 
 clustering:
+  superpixel:
   scheduler:
     type: 'linear'
     epochs: [0,30]

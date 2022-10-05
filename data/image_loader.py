@@ -19,6 +19,7 @@ class ImageLoader():
         self.slic_segments = config['data']['slic_segments']
         self.subset = config['data'].get("subset", "")
         self.do_slic = not config['clustering']['no_slic']
+        self.super_pixel = config['clustering']['superpixel']
 
     def get_loader(self, stage, batch_size):
         dataset = self.get_dataset(stage)
@@ -98,12 +99,12 @@ class ImageLoadeCOCO():
     def get_dataset(self, stage):
         #import ipdb;ipdb.set_trace()
         image_dir = os.path.join(self.image_dir, f"{'train2017' if stage in ('train', 'ft') else 'val2017'}")
+        annoFile = os.path.join(self.image_dir,'annotations', f"{'instances_train2017.json' if stage in ('train', 'ft') else 'instances_val2017.json'}")
         #mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform3 = get_transform('raw')
         transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,self.slic_segments )
-        annoFile = os.path.join(self.image_dir,'annotations', f"{'instances_train2017.json' if stage in ('train', 'ft') else 'instances_val2017.json'}")
         dataset = COCOMaskDataset(image_dir,annoFile,transform)
         return dataset
 
