@@ -303,6 +303,17 @@ class BYOLTrainer():
             inv_loss = inv_loss.sum() / weights.sum()        
     
         return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
+    
+    
+    def run_knn(self):
+        if self.knn > 0:
+            self.model.eval()
+            net = self.model.module.online_network.encoder
+            net.eval()
+            kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
+            net.train()
+            del net
+            self.model.train()
 
     def train_epoch(self, epoch, printer=print):
         batch_time = eval_util.AverageMeter()
@@ -330,6 +341,7 @@ class BYOLTrainer():
                 net.train()
                 del net
                 self.model.train()
+        return 
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)

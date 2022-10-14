@@ -1,4 +1,10 @@
-#-*- coding:utf-8 -*-
+from utils.knn import build_imagenet_sampler,kNN
+import numpy as np
+from torch.utils.data import Subset
+import torch
+import os
+import yaml
+import argparse
 import os
 import yaml
 import torch
@@ -8,13 +14,9 @@ from trainer.byol_trainer import BYOLTrainer
 from utils import logging_util, distributed_utils
 import argparse
 
-parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
-parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 
-                    help="Torch distributed will automatically pass local argument")
-parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
-                    help="Experiment to run. Default is Imagenet 300 epochs")
-                    
-def run_task(config):
+num_replicas = 1
+
+def run_task(config,args):
     logging = logging_util.get_std_logging()
     if config['distributed']:
         world_size = int(os.environ['WORLD_SIZE'])
@@ -28,15 +30,18 @@ def run_task(config):
         config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
 
     trainer = BYOLTrainer(config)
-    rs = None
+    rs = args.model
     trainer.resume_model(model_path=rs)
     start_epoch = trainer.start_epoch
-
-    for epoch in range(start_epoch + 1, trainer.total_epochs + 1):
-        trainer.train_epoch(epoch, printer=logging.info)
-        trainer.save_checkpoint(epoch)
-
     trainer.run_knn()
+
+parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
+parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 
+                    help="Torch distributed will automatically pass local argument")
+parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
+                    help="Experiment to run. Default is Imagenet 300 epochs")
+parser.add_argument("--model", metavar="Model path", type=str, 
+                    help="Model path",required=True)
 
 def main():
     args = parser.parse_args()
@@ -49,8 +54,8 @@ def main():
     if args.local_rank==0:
         print("=> Config Details")
         print(config) #For reference in logs
-    
-    run_task(config)
+        print(args)
+    run_task(config,args)
 
 if __name__ == "__main__":
     main()

@@ -3,7 +3,7 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
-  resume_path: /shared/jacklishufan/ablation2/10_11_22-28_resnet50_300.pth.tar
+  resume_path: /shared/jacklishufan/new_ablation/10_13_18-12_resnet50_300.pth.tar
   save_epoch: 50
   time_stamp: null
 clustering:
