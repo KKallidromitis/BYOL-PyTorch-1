@@ -341,7 +341,6 @@ class BYOLTrainer():
                 net.train()
                 del net
                 self.model.train()
-        return 
         while images is not None:
             i += 1
             self.adjust_learning_rate(self.steps)

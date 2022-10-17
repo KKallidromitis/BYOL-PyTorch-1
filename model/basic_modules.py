@@ -6,6 +6,8 @@ from torchvision import models
 from utils.mask_utils import sample_masks
 import torch.nn.functional as F
 import numpy as np
+import timm
+from .vit_deconv import vit_base_patch16 as vit_base_patch16_deconv
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -36,6 +38,24 @@ class Masknet(nn.Module):
     def forward(self, x):
         y = self.norm(self.conv3(F.relu(self.conv2(F.relu(self.conv1(x))))))
         return y
+
+class VitWrapper(nn.Module):
+    def __init__(self,backbone,feature_resolution=14,deconv=False):
+        super().__init__()
+        self.backbone = backbone
+        self.dim = feature_resolution
+        self.deconv = deconv
+    @property
+    def forward_features(self):
+        return self.backbone.forward_features
+
+    def forward(self,x):
+        if self.deconv:
+            return self.forward_features(x)[-1] # c5 7x7
+        else: # standrad vit
+            feat = self.backbone.forward_features(x).permute(0,2,1)[:,:,1:]
+            n,c,hw = feat.shape
+            return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
 
 class SpatialAttentionBlock(nn.Module):
 
@@ -161,8 +181,17 @@ class EncoderwithProjection(nn.Module):
         # backbone
         pretrained = config['model']['backbone']['pretrained']
         net_name = config['model']['backbone']['type']
-        base_encoder = models.__dict__[net_name](pretrained=pretrained)
-        self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
+        if net_name == 'vit':
+            base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =True)
+            self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'])
+        elif net_name == 'vit-deconv':
+            base_encoder = vit_base_patch16_deconv()
+            self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'],deconv=True)
+        else:
+            ## resnet
+            base_encoder = models.__dict__[net_name](pretrained=pretrained)
+            self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
+
 
         # projection
         input_dim = config['model']['projection']['input_dim']

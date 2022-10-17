@@ -15,6 +15,7 @@ import numpy as np
 from utils.kmeans.per_image import BatchwiseKMeans
 from data.byol_transform import denormalize,rgb_to_hsv
 
+
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -55,6 +56,11 @@ class BYOLModel(torch.nn.Module):
         self.rank = config['rank']
         self.add_views =  config['clustering']['add_views']
         self.use_pca = config['clustering']['use_pca']
+        self.encoder_type = config['model']['backbone']['type']
+        if self.encoder_type == 'resnet50':
+            self.feature_resolution = 7
+        else:
+            self.feature_resolution =  config['model']['backbone']['feature_resolution']
         # if self.add_views:
         #     assert self.no_slic, "add_views can be true only if explict slic is disabled"
         self.w_color = config['clustering']['weight_color']
@@ -85,9 +91,14 @@ class BYOLModel(torch.nn.Module):
     def fpn(self):
         if self._fpn:
             return self._fpn
-        else:
+        if self.encoder_type == 'vit' or self.encoder_type == 'vit-deconv':
+            self._fpn = self.target_network.encoder
+            return self._fpn
+        elif self.encoder_type == 'resnet50':
             self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
             return self._fpn
+        else:
+            raise NotImplementedError
             
     def handle_flip(self,aligned_mask,flip):
         '''
@@ -122,9 +133,17 @@ class BYOLModel(torch.nn.Module):
         coords = coords[0] * dimension + coords[1]
         return coords.unsqueeze(0).repeat(batch_size,1,1) # H X W
 
+    def get_feature(self,x):
+        if self.encoder_type == 'vit-deconv':
+            return self.fpn.forward_features(x)[-2] # 14 x 14 
+        else:
+            return self.fpn(x)['c4']
+            
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
+        
         b = raw_image.shape[0]
-        feats = self.fpn(raw_image)['c4']
+        #feats = self.fpn(raw_image)['c4']
+        feats = self.get_feature(raw_image) # B X C X H X W
         feats = F.normalize(feats,dim=1)
         coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
@@ -234,7 +253,7 @@ class BYOLModel(torch.nn.Module):
             # flip_2 = roi_t[:,1,4]
             # aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
             # aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
-            aligned_1,aligned_2 = self.roi_align(converted_idx_b,roi_t)
+            aligned_1,aligned_2 = self.roi_align(converted_idx_b,roi_t,self.feature_resolution)
             mask_b,mask_c,h,w =aligned_1.shape
             aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
             aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()

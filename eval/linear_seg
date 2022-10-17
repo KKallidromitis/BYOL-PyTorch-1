@@ -1,0 +1,372 @@
+'''
+Usage:
+Put this in MMCV+MMSEG environment used for pascal evaluation
+Put this into mmsegmentation root folder
+Copy utils/distributed_utils.py to the same folder
+Example command
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -m torch.distributed.launch\\
+ --nproc_per_node=4 --nnodes=1 --node_rank=0 --master_addr="127.0.0.1" --master_port=14545 \\
+ linear_seg.py \\
+ --model /shared/jacklishufan/ablation2/10_11_22-17_resnet50_300.pth.tar
+
+'''
+from atexit import register
+from functools import partial
+from mmseg.datasets import PascalVOCDataset
+from mmseg.datasets.builder import build_dataset,build_dataloader
+
+import numpy as np
+from torch.utils.data import Subset
+import torch
+import os
+import yaml
+import argparse
+import os
+import yaml
+import torch
+import torch.distributed as dist
+import logging
+import sys
+import torch.nn.functional as F
+from torchvision.models.segmentation import FCN
+from torchvision.models.resnet import resnet50
+from mmseg.apis import init_random_seed,set_random_seed
+import torch
+#from detectron2.checkpoint import DetectionCheckpointer
+import pickle
+from torchvision.models._utils import IntermediateLayerGetter
+import sys
+from mmcv.parallel import collate
+from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
+                         wrap_fp16_model)
+from torch.nn.parallel import DistributedDataParallel as DDP
+from distributed_utils import gather_from_all
+import torchmetrics
+
+def get_std_logging():
+    logging.basicConfig(
+        stream=sys.stdout,
+        format='%(asctime)s %(filename)s:%(lineno)d [%(levelname)s] %(message)s',
+        level=logging.INFO
+    )
+    return logging
+
+
+import argparse
+from tqdm.cli import tqdm
+
+num_replicas = 1
+
+
+parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
+parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 
+                    help="Torch distributed will automatically pass local argument")
+# parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
+#                     help="Experiment to run. Default is Imagenet 300 epochs")
+parser.add_argument("--model", metavar="Model path", type=str, 
+                    help="Model path",required=True)
+
+
+data_root = 'data/VOCdevkit/VOC2012'
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+crop_size = (512, 512)
+# train_pipeline = [
+#     dict(type='LoadImageFromFile'),
+#     dict(type='LoadAnnotations'),
+#     dict(type='Resize', img_scale=(2048, 512), ratio_range=(0.5, 2.0)),
+#     dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
+#     dict(type='RandomFlip', prob=0.5),
+#     dict(type='PhotoMetricDistortion'),
+#     dict(
+#         type='Normalize',
+#         mean=[123.675, 116.28, 103.53],
+#         std=[58.395, 57.12, 57.375],
+#         to_rgb=True),
+#     dict(type='Pad', size=(512, 512), pad_val=0, seg_pad_val=255),
+#     dict(type='DefaultFormatBundle'),
+#     dict(type='Collect', keys=['img', 'gt_semantic_seg'])
+# ]
+# test_pipeline = [
+#     dict(type='LoadImageFromFile'),
+#     dict(
+#         type='MultiScaleFlipAug',
+#         img_scale=(2048, 512),
+#         flip=False,
+#         transforms=[
+#             dict(type='Resize', keep_ratio=True),
+#             dict(type='RandomFlip'),
+#             dict(
+#                 type='Normalize',
+#                 mean=[123.675, 116.28, 103.53],
+#                 std=[58.395, 57.12, 57.375],
+#                 to_rgb=True),
+#             dict(type='ImageToTensor', keys=['img']),
+#             dict(type='Collect', keys=['img'])
+#         ])
+# ]
+
+def build_model(src):
+    print(src)
+    #exit()
+    obj = torch.load(src,map_location='cpu')['model']
+    newmodel = {}
+    for k in list(obj.keys()):
+            if "module.online_network.encoder." not in k: #Only use online network encoder param
+                obj.pop(k)
+                continue
+            else:
+                old_k = k
+                k = k[len("module.online_network.encoder."):] #Remove byol model prefix
+            if k[0] in ["0", "1"]:
+                if k[0] == "0": #To match typical torchvision convention (our 0 -> conv1)
+                    k = "conv1" + k[1:]
+                else: # bn1 param
+                    k = "bn1" + k[1:]
+            for t in [1, 2, 3, 4]:
+                k = k[0].replace("{}".format(t+3), "layer{}".format(t )) + k[1:]
+            print(k)
+            newmodel[k] = obj.pop(old_k).detach()
+
+    newmodel['fc.weight']=torch.rand(1000,2048)   
+    newmodel['fc.bias']=torch.rand(1000)   
+            
+    backbone = resnet50(pretrained=False)
+    #
+    return_layers = {"layer4": "out"}
+    return_layers["layer3"] = "aux"
+    print(backbone)
+    #backbone = IntermediateLayerGetter(backbone,)
+    backbone.load_state_dict(newmodel)
+    return torch.nn.Sequential(*list(backbone.children())[:-2])
+data = dict(
+    samples_per_gpu=4,
+    workers_per_gpu=4,
+    train=dict(
+        type='PascalVOCDataset',
+        data_root='data/VOCdevkit/VOC2012',
+        img_dir='JPEGImages',
+        ann_dir=['SegmentationClass', 'SegmentationClassAug'],
+        split=[
+            'ImageSets/Segmentation/train.txt',
+            'ImageSets/Segmentation/aug.txt'
+        ],
+        pipeline=[
+            dict(type='LoadImageFromFile'),
+            dict(type='LoadAnnotations'),
+            dict(type='Resize', img_scale=None, ratio_range=(0.5, 2.0)), # change scaling
+            dict(type='RandomCrop', crop_size=(513, 513), cat_max_ratio=0.99),
+            dict(type='RandomFlip', prob=0.5),
+            # dict(type='PhotoMetricDistortion'),
+            dict(
+                type='Normalize',
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True),
+            dict(type='Pad', size=(513, 513), pad_val=0, seg_pad_val=255),
+            dict(type='DefaultFormatBundle'),
+            dict(type='Collect', keys=['img', 'gt_semantic_seg'])
+        ]),
+    val=dict(
+        type='PascalVOCDataset',
+        data_root='data/VOCdevkit/VOC2012',
+        img_dir='JPEGImages',
+        ann_dir='SegmentationClass',
+        split='ImageSets/Segmentation/val.txt',
+        pipeline=[
+            dict(type='LoadImageFromFile'),
+            dict(type='LoadAnnotations'),
+            dict(
+                type='MultiScaleFlipAug',
+                #img_scale=(2048, 512),
+                img_scale=None,
+                img_ratios=[1.0],
+                flip=False,
+                transforms=[
+                    dict(type='Resize', keep_ratio=True),
+                    dict(type='RandomFlip'),
+                    dict(
+                        type='Normalize',
+                        mean=[123.675, 116.28, 103.53],
+                        std=[58.395, 57.12, 57.375],
+                        to_rgb=True),
+                     dict(type='DefaultFormatBundle'),
+                    dict(type='Collect', keys=['img','gt_semantic_seg']),
+                    #dict(type='RandomCrop', crop_size=(512, 512), cat_max_ratio=0.75),
+                ])
+        ]),
+    test=dict(
+        type='PascalVOCDataset',
+        data_root='data/VOCdevkit/VOC2012',
+        img_dir='JPEGImages',
+        ann_dir='SegmentationClass',
+        split='ImageSets/Segmentation/val.txt',
+        pipeline=[
+            dict(type='LoadImageFromFile'),
+            dict(type='LoadAnnotations'),
+            dict(
+                type='MultiScaleFlipAug',
+                #img_scale=(2048, 512),
+                img_scale=None,
+                img_ratios=[1.0],
+                #img_scale=(513, 513),
+                flip=False,
+                transforms=[
+                    dict(type='Resize', keep_ratio=True),
+                    dict(type='RandomFlip'),
+                    dict(
+                        type='Normalize',
+                        mean=[123.675, 116.28, 103.53],
+                        std=[58.395, 57.12, 57.375],
+                        to_rgb=True),
+                    dict(type='ImageToTensor', keys=['img']),
+                     dict(type='DefaultFormatBundle'),
+                    dict(type='Collect', keys=['img'])
+                ])
+        ]))
+
+def do_eval(data_loader_eval_test,model,regressor,rank):
+    predictions = []
+    regressor.eval()
+    mats = torch.zeros(21,21)
+    gts = []
+    if rank == 0:
+        bar = tqdm(data_loader_eval_test)
+    else:
+        bar = data_loader_eval_test
+    for batch in bar:
+        img = batch['img'][0].data[0].to(device)
+        gt_semantic_seg = batch['gt_semantic_seg'][0].data[0].to(device)
+        gt_semantic_seg[gt_semantic_seg==255] = 21
+        gt_semantic_seg = F.one_hot(gt_semantic_seg,22)[:,0].permute(0,3,1,2) # B X H X W X C
+        gt_semantic_seg[:,-1] = 0
+        gt_semantic_seg = gt_semantic_seg.argmax(1).long()
+        features = model(img)
+        features = features.permute(0,2,3,1)
+        preds = regressor(features).permute(0,3,1,2)
+        preds = F.interpolate(preds,gt_semantic_seg.shape[-2:],mode='bilinear')
+        preds = preds.argmax(1)
+        preds = preds.reshape(-1)
+        gt_semantic_seg = gt_semantic_seg.reshape(-1)
+        predictions.append(preds.detach().cpu())
+        gts.append(gt_semantic_seg.detach().cpu())
+        mats +=torch.einsum('bc,bd->cd',F.one_hot(preds,21).float(),F.one_hot(gt_semantic_seg,21).float()).reshape(21,21).detach().cpu()
+    predictions = torch.cat(predictions) # n
+    gts =  torch.cat(gts) # w
+    #mat = torch.einsum('bc,bd->cd',predictions,gts).reshape(1,21,21)
+    acc = (predictions==gts).sum().reshape(-1,1)
+    tol = torch.FloatTensor([len(predictions)]).reshape(-1,1)
+    acc = gather_from_all(acc).sum()
+    tol = gather_from_all(tol).sum()
+
+    mats = mats.reshape(1,21,21)
+    mats = gather_from_all(mats).sum(0)
+    miou_res = torchmetrics.functional.classification.jaccard._jaccard_from_confmat(mats, 21,
+                'macro',
+                None,
+                0.0,)
+    if rank ==0:
+        print("ACC,ACC,MIoU")
+        print(acc/tol,mats.diag().sum()/mats.sum(),miou_res)
+
+
+if __name__=='__main__':
+    args = parser.parse_args()
+    config = dict(distributed=True)
+    logging = get_std_logging()
+    if config['distributed']:
+        world_size = int(os.environ['WORLD_SIZE'])
+        rank = int(os.environ['RANK'])
+        local_rank = int(os.environ.get('LOCAL_RANK', '0'))        
+        config.update({'world_size': world_size, 'rank': rank, 'local_rank': local_rank})
+        init_dist('pytorch', world_size=world_size, rank=rank)
+        #dist.init_process_group(backend="nccl", world_size=world_size, rank=rank)
+        logging.info(f'world_size {world_size}, gpu {local_rank}, rank {rank} init done.')
+    else:
+        config.update({'world_size': 1, 'rank': 0, 'local_rank': 0})
+        
+    dataset_train = build_dataset(data['train'])
+    dataset_eval = build_dataset(data['val'])
+    num_replicas = config['world_size']
+    rank = config['rank']
+    logging.info("RANK:",rank)
+    sampler_eval_train = torch.utils.data.DistributedSampler(
+        dataset_train, num_replicas=num_replicas, rank=rank, shuffle=True
+    )
+    sampler_eval_test = torch.utils.data.DistributedSampler(
+        dataset_eval, num_replicas=num_replicas, rank=rank, shuffle=True
+    )
+    seed = init_random_seed(0)
+    set_random_seed(seed, deterministic=True)
+    data_loader_eval_train = build_dataloader(dataset_train,
+                     4,
+                     4,
+                     num_gpus=num_replicas,
+                     dist=True,
+                     shuffle=True,
+                     seed=0,
+                     drop_last=False,
+                     pin_memory=True,
+                     persistent_workers=True,)
+    data_loader_eval_test = build_dataloader(dataset_eval,
+                     1,
+                     4,
+                     num_gpus=num_replicas,
+                     dist=True,
+                     shuffle=True,
+                     seed=0,
+                     drop_last=False,
+                     pin_memory=True,
+                     persistent_workers=True,)
+
+    # batch_size = 16
+    # data_loader_eval_train = torch.utils.data.DataLoader(dataset_train,batch_size=batch_size*num_replicas,sampler=sampler_eval_train,num_workers=10,collate_fn=partial(collate,batch_size))
+    # data_loader_eval_test = torch.utils.data.DataLoader(dataset_eval,batch_size=batch_size*num_replicas,sampler=sampler_eval_test,num_workers=10,collate_fn=partial(collate,batch_size))
+    logging.info(config)
+    train_features = []
+    gpu = config['local_rank']
+    device = torch.device(f'cuda:{gpu}')
+    model = build_model(args.model)
+    model.eval()
+    model.to(device)
+    regressor = torch.nn.Sequential(
+        torch.nn.Linear(2048,21)
+    )
+    
+    regressor.to(device)
+    if config['distributed']:
+        regressor = DDP(regressor)
+    regressor.train()
+    optimizer = torch.optim.Adam(regressor.parameters(), lr=3e-4)
+    criterion = torch.nn.CrossEntropyLoss()
+    n_batch = 100
+    idx_batch = 0
+    for _ in range(100):
+        if rank == 0:
+            print(f"Batch {idx_batch}/{n_batch}")
+        if rank == 0:
+            bar = tqdm(data_loader_eval_train)
+        else:
+            bar = data_loader_eval_train
+        for batch in bar:
+            regressor.train()
+            img = batch['img'].data[0].to(device)
+            gt_semantic_seg = batch['gt_semantic_seg'].data[0].to(device)
+            gt_semantic_seg[gt_semantic_seg==255] = 21
+            gt_semantic_seg = F.one_hot(gt_semantic_seg,22)[:,0].permute(0,3,1,2) # B X H X W X C
+            gt_semantic_seg = F.interpolate(gt_semantic_seg.float(),(17,17),mode='area')
+            gt_semantic_seg[:,-1] = 0
+            gt_semantic_seg = gt_semantic_seg.argmax(1).long()
+            features = model(img).detach()
+            optimizer.zero_grad()
+            features = features.permute(0,2,3,1)
+            preds = regressor(features).permute(0,3,1,2)
+            loss = criterion(preds,gt_semantic_seg)
+            loss.backward()
+            optimizer.step()
+        if idx_batch % 10 == 0:
+            do_eval(data_loader_eval_test,model,regressor,rank)
+        idx_batch += 1
+
+    regressor.eval()
+    do_eval(data_loader_eval_test,model,regressor,rank)
