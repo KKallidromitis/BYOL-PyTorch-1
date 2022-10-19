@@ -43,6 +43,24 @@ class PiecewiseScheduler(Scheduler):
         return k
 
 
+class RandomScheduler(Scheduler):
+    
+    def __init__(self,epochs,values):
+        '''
+        epoch: int[] 
+        values: int[]
+        Use k = values[i] from epochs[i]
+        '''
+        #self.config = list(zip(epochs,values))
+        self.min_value = values[0]
+        self.max_value = values[1]
+
+
+    def get_k(self,epoch):
+        k = np.random.randint(self.min_value,self.max_value)
+        return k
+
+
 class LinearScheduler(Scheduler):
     
     def __init__(self,epochs,values):
@@ -126,6 +144,7 @@ class CosineScheduler(Scheduler):
 SCHEDULERS = {
     'constant':ConstantScheduler,
     'piecewise':PiecewiseScheduler,
+    'random':RandomScheduler,
     'linear':LinearScheduler,
     'cosine':CosineScheduler
 }

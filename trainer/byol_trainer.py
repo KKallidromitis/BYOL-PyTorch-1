@@ -305,8 +305,8 @@ class BYOLTrainer():
         return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
     
     
-    def run_knn(self):
-        if self.knn > 0:
+    def run_knn(self,force=False):
+        if self.knn > 0 or force:
             self.model.eval()
             net = self.model.module.online_network.encoder
             net.eval()

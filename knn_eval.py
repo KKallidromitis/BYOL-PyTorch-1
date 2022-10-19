@@ -31,9 +31,11 @@ def run_task(config,args):
 
     trainer = BYOLTrainer(config)
     rs = args.model
+    if rs == 'none':
+        rs = None
     trainer.resume_model(model_path=rs)
     start_epoch = trainer.start_epoch
-    trainer.run_knn()
+    trainer.run_knn(force=True)
 
 parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
 parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 

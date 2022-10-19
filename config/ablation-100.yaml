@@ -17,10 +17,10 @@ clustering:
     epochs:
     - 0
     - 300
-    type: linear
+    type: random
     values:
-    - 128
     - 4
+    - 128
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
