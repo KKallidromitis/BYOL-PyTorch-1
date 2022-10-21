@@ -13,14 +13,14 @@ clustering:
   superpixel: slic # switch SLIC vs FH
   per_image: false
   batch_size: 32
-  sub_sample_size: 0 # subsampl masks, 0 disable
+  sub_sample_size: 16 # subsampl masks, 0 disable
   scheduler:
     epochs:
     - 0
     - 300
-    type: cosine
+    type: random
     values:
-    - 16
+    - 160
     - 16
   use_pca: 0
   weight_color: 0.0
@@ -69,7 +69,7 @@ model:
     type: MLP
 optimizer:
   base_lr: 0.3
-  scale_lr_by_k: 16 #scale lr based on a base clustering_k, 0 to disable
+  scale_lr_by_k: 0 #scale lr based on a base clustering_k, 0 to disable
   exclude_bias_and_bn: true
   legacy_schedule: false
   lr_type: cosine
