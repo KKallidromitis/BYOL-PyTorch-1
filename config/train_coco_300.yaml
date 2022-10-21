@@ -3,7 +3,7 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: "/shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar"
-  resume_path: "/home/jacklishufan/detconb/ckpt2/detconb/09_14_20-15-784/09_14_20-15_resnet50_300.pth.tar"
+  resume_path: 
   save_epoch: 50
   time_stamp: null
 clustering:
@@ -15,11 +15,11 @@ clustering:
   scheduler:
     epochs:
     - 0
-    - 800
-    type: cosine
+    - 300
+    type: random
     values:
     - 128
-    - 16
+    - 4
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
@@ -45,6 +45,7 @@ log:
   log_dir: null
   log_step: 10
 loss:
+  type: byol
   mask_rois: 16
   temperature: 0.1
 model:
@@ -73,14 +74,19 @@ optimizer:
     epochs:
     - 0
     - 100 
-    type: piecewise
+    type: cosine
     values:
     - 1
     - 0
-  total_epochs: 800
+  total_epochs: 100
   type: lars
   warmup_epochs: 8
   weight_decay: 1.0e-06
 rank: 0
 seed: 0
 stage: train
+
+eval:
+  img_dir: ./imagenet/images
+  knn: 20 # 0 to disable
+  eval_step: 5
