@@ -3,7 +3,7 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
-  resume_path: 
+  resume_path: ''
   save_epoch: 50
   time_stamp: null
 clustering:

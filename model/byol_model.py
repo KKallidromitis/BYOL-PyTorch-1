@@ -39,6 +39,7 @@ class BYOLModel(torch.nn.Module):
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
+        self.sub_sample_size = config['clustering']['sub_sample_size']
         self.per_image_k_means = config['clustering']['per_image']
         self.clustering_batchsize = config['clustering']['batch_size']
         if self.per_image_k_means:
@@ -214,6 +215,28 @@ class BYOLModel(torch.nn.Module):
         aligned_2 = self.handle_flip(ops.roi_align(target,rois_2,out_size),flip_2) # mask output is B X 16 X 7 X 7
         return aligned_1,aligned_2
 
+    @staticmethod
+    def subsample(seq, mask):
+        if mask is None:
+            return seq
+        n, l = seq.shape[:2]
+        _, l_mask = mask.shape
+        x_arr = torch.arange(n).view(n, 1).repeat(1, l_mask)
+        seq = seq[x_arr, mask]
+        return seq
+
+    def sample_masks(self,maska,maskb,n_masks=16):
+        batch_size=maska.shape[0]
+        mask_exists = torch.greater(maska.sum(-1), 1e-3) &  torch.greater(maskb.sum(-1), 1e-3)
+        sel_masks = mask_exists.float() + 0.00000000001
+        sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
+        sel_masks = torch.log(sel_masks)
+        
+        dist = torch.distributions.categorical.Categorical(logits=sel_masks)
+        mask_ids = dist.sample([n_masks]).T
+        
+        return self.subsample(maska,mask_ids), self.subsample(maska,mask_ids)
+    
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
@@ -266,6 +289,8 @@ class BYOLModel(torch.nn.Module):
             aligned_1 = aligned_1 * intersec_masks_1
             aligned_2 = aligned_2 * intersec_masks_2
         mask_ids = None
+        if self.sub_sample_size > 0:
+            aligned_1,aligned_2 = self.sample_masks(aligned_1,aligned_2,self.sub_sample_size)
         masks = torch.cat([aligned_1, aligned_2])
         masks_inv = torch.cat([aligned_2, aligned_1])
         num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()

@@ -1,5 +1,6 @@
 #-*- coding:utf-8 -*-
 # from math import gamma
+from distutils.command.config import config
 import os
 import time
 import datetime
@@ -96,7 +97,7 @@ class BYOLTrainer():
         if self.enable_wandb:
             import wandb
             if self.gpu==0 or self.log_all:
-                wandb.init(project="r2o_pretrain",name = save_dir+'_gpu_'+str(self.rank))
+                wandb.init(project="r2o_pretrain",name = save_dir+'_gpu_'+str(self.rank)+config.get('name',''))
         try:
             os.makedirs(save_dir)
         except:
@@ -183,6 +184,7 @@ class BYOLTrainer():
             self.model = DDP(self.model, delay_allreduce=True)
         #cosine_sim = lambda x,y: torch.einsum('nd,md->nm',x,y)
         self.kmeans = KMeans(5)
+        self.scale_lr_by_k = self.config['optimizer']['scale_lr_by_k']
         print("amp init end!")
 
     # resume snapshots from pre-train
@@ -214,10 +216,11 @@ class BYOLTrainer():
             torch.save(state, self.ckpt_path.format(epoch))
             del state
 
-    def adjust_learning_rate(self, step):
+    def adjust_learning_rate(self, step,k):
         """learning rate warm up and decay"""
         max_lr = self.max_lr
         min_lr = 1e-3 * self.max_lr
+
         
         if step < self.warmup_steps:
             lr =  step / int(self.warmup_steps) * max_lr #Following deepmind implementation, returns lr = 0. during first step!
@@ -241,7 +244,9 @@ class BYOLTrainer():
             global_step = np.minimum((step - self.warmup_steps), max_steps)
             cosine_decay_value = 0.5 * (1 + np.cos(np.pi * global_step / max_steps))
             lr = max_lr * cosine_decay_value
-                 
+        
+        if self.scale_lr_by_k:
+            lr = lr * k / self.scale_lr_by_k
         for param_group in self.optimizer.param_groups:
             param_group['lr'] = lr
 
@@ -327,7 +332,6 @@ class BYOLTrainer():
 
         end = time.time()
         self.data_ins.set_epoch(epoch)
-        clustering_k = self.clustering_scheduler.get_num_segments(epoch)
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
@@ -343,7 +347,8 @@ class BYOLTrainer():
                 self.model.train()
         while images is not None:
             i += 1
-            self.adjust_learning_rate(self.steps)
+            clustering_k = self.clustering_scheduler.get_num_segments(epoch)
+            self.adjust_learning_rate(self.steps,clustering_k)
             self.adjust_mm(self.steps)
             self.steps += 1
             #import ipdb;ipdb.set_trace()

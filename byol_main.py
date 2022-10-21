@@ -1,4 +1,5 @@
 #-*- coding:utf-8 -*-
+from ast import arg
 import os
 import yaml
 import torch
@@ -13,6 +14,8 @@ parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0,
                     help="Torch distributed will automatically pass local argument")
 parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
                     help="Experiment to run. Default is Imagenet 300 epochs")
+parser.add_argument("--name", metavar="Log Name", default="", 
+                    help="Name of wandb entry")
                     
 def run_task(config):
     logging = logging_util.get_std_logging()
@@ -49,7 +52,8 @@ def main():
     if args.local_rank==0:
         print("=> Config Details")
         print(config) #For reference in logs
-    
+    if args.name:
+        config['name']=args.name
     run_task(config)
 
 if __name__ == "__main__":

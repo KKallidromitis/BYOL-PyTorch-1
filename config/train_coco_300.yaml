@@ -10,16 +10,18 @@ clustering:
   add_views: false
   gather: false
   no_slic: false
+  superpixel: slic # switch SLIC vs FH
   per_image: false
   batch_size: 32
+  sub_sample_size: 0 # subsampl masks, 0 disable
   scheduler:
     epochs:
     - 0
     - 300
-    type: random
+    type: cosine
     values:
-    - 128
-    - 4
+    - 16
+    - 16
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
@@ -41,6 +43,7 @@ data:
 distributed: true
 local_rank: 0
 log:
+  enable_wandb: on
   log_all: false
   log_dir: null
   log_step: 10
@@ -66,6 +69,7 @@ model:
     type: MLP
 optimizer:
   base_lr: 0.3
+  scale_lr_by_k: 16 #scale lr based on a base clustering_k, 0 to disable
   exclude_bias_and_bn: true
   legacy_schedule: false
   lr_type: cosine

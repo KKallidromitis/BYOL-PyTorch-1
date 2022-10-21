@@ -93,3 +93,4 @@ eval:
   img_dir: ./imagenet/images
   knn: 20 # 0 to disable
   eval_step: 1
+  enable_wandb: on
