@@ -234,7 +234,7 @@ class BYOLModel(torch.nn.Module):
         
         dist = torch.distributions.categorical.Categorical(logits=sel_masks)
         mask_ids = dist.sample([n_masks]).T
-        breakpoint()
+        #breakpoint()
         return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
