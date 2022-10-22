@@ -20,8 +20,8 @@ clustering:
     - 300
     type: random
     values:
-    - 160
     - 16
+    - 160
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0

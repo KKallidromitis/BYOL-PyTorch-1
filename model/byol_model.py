@@ -227,15 +227,15 @@ class BYOLModel(torch.nn.Module):
 
     def sample_masks(self,maska,maskb,n_masks=16):
         batch_size=maska.shape[0]
-        mask_exists = torch.greater(maska.sum(-1), 1e-3) &  torch.greater(maskb.sum(-1), 1e-3)
+        mask_exists = torch.greater(maska.sum(-1), 1e-3) &  torch.greater(maskb.sum(-1), 1e-3) # N X L
         sel_masks = mask_exists.float() + 0.00000000001
         sel_masks = sel_masks / sel_masks.sum(1, keepdims=True)
         sel_masks = torch.log(sel_masks)
         
         dist = torch.distributions.categorical.Categorical(logits=sel_masks)
         mask_ids = dist.sample([n_masks]).T
-        
-        return self.subsample(maska,mask_ids), self.subsample(maska,mask_ids)
+        breakpoint()
+        return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
