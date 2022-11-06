@@ -197,7 +197,7 @@ class BYOLTrainer():
             checkpoint = torch.load(model_path, map_location=self.device)
 
             self.start_epoch = checkpoint['epoch']
-            self.steps = checkpoint['steps']
+            self.steps = checkpoint['steps'] # * 2
             self.model.load_state_dict(checkpoint['model'], strict=False)
             self.optimizer.load_state_dict(checkpoint['optimizer'])
             amp.load_state_dict(checkpoint['amp'])

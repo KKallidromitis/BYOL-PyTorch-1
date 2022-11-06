@@ -104,7 +104,7 @@ class ImageLoadeCOCO():
         transform1 = get_transform(stage)
         transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
         transform3 = get_transform('raw')
-        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,self.slic_segments )
+        transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,slic_segments=self.slic_segments )
         dataset = COCOMaskDataset(image_dir,annoFile,transform)
         return dataset
 

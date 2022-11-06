@@ -3,7 +3,7 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: "/shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar"
-  resume_path: 
+  resume_path: "/home/jacklishufan/detconb/ckpt2/detconb/11_02_15-04-620/11_02_15-04_resnet50_150.pth.tar"
   save_epoch: 50
   time_stamp: null
 clustering:
@@ -12,23 +12,23 @@ clustering:
   no_slic: false
   superpixel: slic # switch SLIC vs FH
   per_image: false
-  batch_size: 32
-  sub_sample_size: 16 # subsampl masks, 0 disable
+  batch_size: 0
+  sub_sample_size: 0 # subsampl masks, 0 disable
   scheduler:
     epochs:
     - 0
-    - 300
-    type: random
+    - 800
+    type: cosine
     values:
-    - 16
-    - 160
+    - 128
+    - 4
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
 data:
-  data_workers: 8
+  data_workers: 6
   dual_views: true
-  image_dir: "./coco"
+  image_dir: "/shared/group/coco"
   mask_type: 'coco'
   n_kmeans: 9999
   num_examples: 117266
@@ -69,7 +69,7 @@ model:
     type: MLP
 optimizer:
   base_lr: 0.3
-  scale_lr_by_k: 0 #scale lr based on a base clustering_k, 0 to disable
+  scale_lr_by_k: 16 #scale lr based on a base clustering_k, 0 to disable
   exclude_bias_and_bn: true
   legacy_schedule: false
   lr_type: cosine
@@ -82,15 +82,15 @@ optimizer:
     values:
     - 1
     - 0
-  total_epochs: 100
+  total_epochs: 800
   type: lars
   warmup_epochs: 8
   weight_decay: 1.0e-06
 rank: 0
-seed: 0
+seed: 101
 stage: train
 
 eval:
-  img_dir: ./imagenet/images
+  img_dir: /shared/group/ilsvrc/
   knn: 20 # 0 to disable
   eval_step: 5
