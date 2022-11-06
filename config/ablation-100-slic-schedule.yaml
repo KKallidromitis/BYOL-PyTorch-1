@@ -11,7 +11,7 @@ clustering:
   batch_size: 0
   gather: false
   sub_sample_size: 0
-  no_slic: true
+  no_slic: false
   superpixel: slic # switch SLIC vs FH
   per_image: false
   scheduler:
@@ -20,8 +20,8 @@ clustering:
     - 300
     type: linear
     values:
+    - 128
     - 4
-    - 100
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0

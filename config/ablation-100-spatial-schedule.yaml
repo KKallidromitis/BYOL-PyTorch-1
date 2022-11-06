@@ -20,8 +20,8 @@ clustering:
     - 300
     type: linear
     values:
-    - 4
-    - 100
+    - 196
+    - 16
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
@@ -48,7 +48,7 @@ log:
   log_step: 10
   enable_wandb: True
 loss:
-  mask_rois: 16
+  mask_rois: 64
   temperature: 0.1
   type: byol
 model:

@@ -332,6 +332,9 @@ class BYOLTrainer():
 
         end = time.time()
         self.data_ins.set_epoch(epoch)
+        clustering_k = self.clustering_scheduler.get_num_segments(epoch)
+        self.data_ins.slic_segments = clustering_k
+        self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
         prefetcher = data_prefetcher(self.train_loader)
         images, masks,diff_transfrom = prefetcher.next()
         i = 0
@@ -345,9 +348,9 @@ class BYOLTrainer():
                 net.train()
                 del net
                 self.model.train()
+
         while images is not None:
-            i += 1
-            clustering_k = self.clustering_scheduler.get_num_segments(epoch)
+            i += 1     
             self.adjust_learning_rate(self.steps,clustering_k)
             self.adjust_mm(self.steps)
             self.steps += 1
@@ -367,7 +370,7 @@ class BYOLTrainer():
             tflag = time.time()
             #breakpoint()
             q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
-            clustering_k=clustering_k)
+            clustering_k=9999,spatial_dimension=int(clustering_k**0.5))
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()

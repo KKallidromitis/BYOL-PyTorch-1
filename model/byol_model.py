@@ -237,7 +237,8 @@ class BYOLModel(torch.nn.Module):
         #breakpoint()
         return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
-    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
+    def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64,
+    spatial_dimension=14):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224
@@ -262,7 +263,7 @@ class BYOLModel(torch.nn.Module):
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             else: # no slic
-                spatial_map = self.get_spatial_mask(14,b) # B X H X W
+                spatial_map = self.get_spatial_mask(spatial_dimension,b) # B X H X W
                 converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             raw_masks = torch.ones(b,1,0,0).cuda()
