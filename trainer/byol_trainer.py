@@ -44,7 +44,7 @@ class BYOLTrainer():
         self.overlap_indicator = self.config['data']['overlap_indicator']
         self.use_weight = self.config['data']['weight']
         self.k_means_loss = config['loss']['type'] == 'k-means'
-        
+        self.backbone_type = config['model']['backbone']['type']
 
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
@@ -313,7 +313,10 @@ class BYOLTrainer():
     def run_knn(self,force=False):
         if self.knn > 0 or force:
             self.model.eval()
-            net = self.model.module.online_network.encoder
+            if self.backbone_type == 'vit-deconv':
+                net = self.model.module.online_network.encoder
+            else:
+                net = self.model.module.online_network.encoder
             net.eval()
             kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
             net.train()
@@ -341,7 +344,8 @@ class BYOLTrainer():
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
-                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
+                feat_dim = 768 if self.backbone_type == 'vit-deconv' else 2018
+                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim)
                 net.train()
                 del net
                 self.model.train()
