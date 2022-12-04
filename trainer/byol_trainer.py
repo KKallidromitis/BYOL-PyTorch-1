@@ -148,6 +148,7 @@ class BYOLTrainer():
             print("DEBUG: Using Coco GT Mask")
             self.data_ins = ImageLoadeCOCO(self.config)
         else:
+            print("DEBUG: Using ImageNet Mask")
             self.data_ins = ImageLoader(self.config)
         self.train_loader = self.data_ins.get_loader(self.stage, self.train_batch_size)
 

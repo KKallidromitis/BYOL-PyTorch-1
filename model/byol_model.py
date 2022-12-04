@@ -145,6 +145,7 @@ class BYOLModel(torch.nn.Module):
         b = raw_image.shape[0]
         #feats = self.fpn(raw_image)['c4']
         feats = self.get_feature(raw_image) # B X C X H X W
+        breakpoint()
         feats = F.normalize(feats,dim=1)
         coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()

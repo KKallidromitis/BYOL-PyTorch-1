@@ -2,7 +2,7 @@ _BASE_: "./base.yaml"
 MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
-  WEIGHTS: "deepmind.pkl"
+  WEIGHTS: "/home/jacklishufan/detconb/eval/11-05-03-13.pkl"
   RESNETS:
     DEPTH: 50
     NORM: "SyncBN"
