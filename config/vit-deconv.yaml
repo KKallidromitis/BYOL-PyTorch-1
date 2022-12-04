@@ -7,7 +7,7 @@ checkpoint:
   save_epoch: 50
   time_stamp: null
 clustering:
-  add_views: true
+  add_views: false
   batch_size: 0
   gather: false
   no_slic: false
@@ -54,7 +54,7 @@ loss:
 model:
   backbone:
     pretrained: false
-    type: vit-deconv
+    type: resnet50
     feature_resolution: 7
   base_momentum: 0.99
   masknet: false
@@ -64,9 +64,12 @@ model:
     output_dim: 256
     type: MLP
   projection:
-    hidden_dim: 3072
-    input_dim: 768
+    hidden_dim: 4096
+    input_dim: 2048
     output_dim: 256
+    # hidden_dim: 3072
+    # input_dim: 768
+    # output_dim: 256
     type: MLP
 optimizer:
   base_lr: 0.3

@@ -135,8 +135,12 @@ class BYOLModel(torch.nn.Module):
         return coords.unsqueeze(0).repeat(batch_size,1,1) # H X W
 
     def get_feature(self,x):
+        breakpoint()
         if self.encoder_type == 'vit-deconv':
             return self.fpn.forward_features(x)[-2] # 14 x 14 
+        elif self.encoder_type == 'vit':
+            r = self.fpn(x)
+            return r # 14 x 14
         else:
             return self.fpn(x)['c4']
             
@@ -145,7 +149,6 @@ class BYOLModel(torch.nn.Module):
         b = raw_image.shape[0]
         #feats = self.fpn(raw_image)['c4']
         feats = self.get_feature(raw_image) # B X C X H X W
-        breakpoint()
         feats = F.normalize(feats,dim=1)
         coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
@@ -239,6 +242,7 @@ class BYOLModel(torch.nn.Module):
         return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
+        breakpoint()
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224

@@ -314,7 +314,7 @@ class BYOLTrainer():
     def run_knn(self,force=False):
         if self.knn > 0 or force:
             self.model.eval()
-            if self.backbone_type == 'vit-deconv':
+            if self.backbone_type in ['vit-deconv','vit']:
                 net = self.model.module.online_network.encoder
             else:
                 net = self.model.module.online_network.encoder
@@ -345,7 +345,7 @@ class BYOLTrainer():
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
-                feat_dim = 768 if self.backbone_type == 'vit-deconv' else 2018
+                feat_dim = 768 if self.backbone_type  in ['vit-deconv','vit'] else 2018
                 kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim)
                 net.train()
                 del net
