@@ -53,6 +53,7 @@ class BYOLTrainer():
         if not self.legacy_schedule_lr:
             self.clustering_scheduler = build_scheduler(self.config['clustering']['scheduler'])
         self.lr_scheduler = build_scheduler(self.config['optimizer']['scheduler'])
+        self.use_gt = self.config['data'].get('use_gt',False)
 
         self.num_examples = self.config['data']['num_examples']
         subset = self.config['data'].get("subset", "") #Update num_examples for subsets
@@ -364,6 +365,9 @@ class BYOLTrainer():
             # mask B X (3 Views) X (2 channels [intersection, SLIC]  ) X H X W
             input_masks = masks[:,:2,0,...].contiguous() # discard last mask,B X 2 X 224 X 224
             slic_labelmap = masks[:,2,1,...].contiguous() # B X 1 X H X W
+            if self.use_gt:
+                slic_labelmap =  masks[:,2,0,...].contiguous()
+                #breakpoint()
             full_view_prior_mask = masks[:,2,0,...].contiguous() # B X 1 X H X W
             # measure data loading time
             data_time.update(time.time() - end)

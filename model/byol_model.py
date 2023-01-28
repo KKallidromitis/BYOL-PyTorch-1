@@ -58,6 +58,7 @@ class BYOLModel(torch.nn.Module):
         self.add_views =  config['clustering']['add_views']
         self.use_pca = config['clustering']['use_pca']
         self.encoder_type = config['model']['backbone']['type']
+        self.use_gt = config['data'].get('use_gt')
         if self.encoder_type == 'resnet50':
             self.feature_resolution = 7
         else:
@@ -135,7 +136,6 @@ class BYOLModel(torch.nn.Module):
         return coords.unsqueeze(0).repeat(batch_size,1,1) # H X W
 
     def get_feature(self,x):
-        breakpoint()
         if self.encoder_type == 'vit-deconv':
             return self.fpn.forward_features(x)[-2] # 14 x 14 
         elif self.encoder_type == 'vit':
@@ -145,7 +145,9 @@ class BYOLModel(torch.nn.Module):
             return self.fpn(x)['c4']
             
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
-        
+        if self.use_gt:
+            converted_idx_b = to_binary_mask(slic_mask,self.n_kmeans,resize_to=(56,56))
+            return converted_idx_b,slic_mask
         b = raw_image.shape[0]
         #feats = self.fpn(raw_image)['c4']
         feats = self.get_feature(raw_image) # B X C X H X W
@@ -242,7 +244,6 @@ class BYOLModel(torch.nn.Module):
         return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
-        breakpoint()
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
         assert im_size == 224

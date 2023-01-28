@@ -27,6 +27,7 @@ clustering:
   weight_spatial: 0.0
 data:
   data_workers: 6
+  use_gt: on
   dual_views: true
   image_dir: "/shared/group/coco"
   mask_type: 'coco'
@@ -37,7 +38,7 @@ data:
   resize_size: 224
   slic_segments: 100
   subset: ""
-  train_batch_size: 128
+  train_batch_size: 4
   val_batch_size: 32
   weight: false
 distributed: true
@@ -92,5 +93,5 @@ stage: train
 
 eval:
   img_dir: /shared/group/ilsvrc/
-  knn: 20 # 0 to disable
+  knn: 0 # 0 to disable
   eval_step: 5
