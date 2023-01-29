@@ -153,13 +153,15 @@ class BYOLModel(torch.nn.Module):
         #feats = self.fpn(raw_image)['c4']
         feats = self.get_feature(raw_image) # B X C X H X W
         feats = F.normalize(feats,dim=1)
-        coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
-        coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
+        
         if self.no_slic:
-            raw_image_downsampled = F.adaptive_avg_pool2d(raw_image,self.spatial_resolution,self.spatial_resolution)
+            raw_image_downsampled = F.adaptive_avg_pool2d(raw_image,self.spatial_resolution)
             raw_image_downsampled = denormalize(raw_image_downsampled)
             raw_image_downsampled = rgb_to_hsv(raw_image_downsampled)
-            super_pixel_pooled = torch.cat((raw_image_downsampled*self.w_color,feats,coords*self.w_spatial),dim=1).permute(0,2,3,1).flatten(1,2).contiguous() # B X 196 X 1027
+            feats_downsample = F.adaptive_avg_pool2d(feats,self.spatial_resolution)
+            coords = torch.stack(torch.meshgrid(torch.arange(self.spatial_resolution, device='cuda'), torch.arange(self.spatial_resolution, device='cuda'),indexing='ij'), 0)
+            coords = coords[None].repeat(feats_downsample.shape[0], 1, 1, 1).float()
+            super_pixel_pooled = torch.cat((raw_image_downsampled*self.w_color,feats_downsample,coords*self.w_spatial),dim=1).permute(0,2,3,1).flatten(1,2).contiguous() # B X 196 X 1027
         else:
             super_pixel = to_binary_mask(slic_mask,-1,resize_to=(14,14))
             if self.add_views:
@@ -207,7 +209,7 @@ class BYOLModel(torch.nn.Module):
                     converted_idx = raw_mask_target
         else:
             #no slic
-            converted_idx = labels.view(-1,14,14)
+            converted_idx = labels.view(-1,self.spatial_resolution,self.spatial_resolution)
         converted_idx_b = to_binary_mask(converted_idx,self.n_kmeans,resize_to=(56,56))
         return converted_idx_b,converted_idx
 
@@ -269,7 +271,7 @@ class BYOLModel(torch.nn.Module):
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             else: # no slic
-                spatial_map = self.get_spatial_mask(14,b) # B X H X W
+                spatial_map = self.get_spatial_mask(self.spatial_resolution,b) # B X H X W
                 converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             raw_masks = torch.ones(b,1,0,0).cuda()

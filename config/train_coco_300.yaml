@@ -3,14 +3,14 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: "/shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar"
-  resume_path: "/home/jacklishufan/detconb/ckpt2/detconb/11_02_15-04-620/11_02_15-04_resnet50_150.pth.tar"
+  resume_path: 
   save_epoch: 50
   time_stamp: null
 clustering:
-  spatial_resolution: 3
+  spatial_resolution: 10
   add_views: false
   gather: false
-  no_slic: false
+  no_slic: on
   superpixel: slic # switch SLIC vs FH
   per_image: false
   batch_size: 0
