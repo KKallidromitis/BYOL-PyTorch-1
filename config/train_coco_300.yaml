@@ -7,6 +7,7 @@ checkpoint:
   save_epoch: 50
   time_stamp: null
 clustering:
+  spatial_resolution: 3
   add_views: false
   gather: false
   no_slic: false
@@ -93,5 +94,5 @@ stage: train
 
 eval:
   img_dir: /shared/group/ilsvrc/
-  knn: 20 # 0 to disable
+  knn: 0 # 0 to disable
   eval_step: 5

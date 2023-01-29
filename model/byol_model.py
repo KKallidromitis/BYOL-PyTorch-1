@@ -59,6 +59,7 @@ class BYOLModel(torch.nn.Module):
         self.use_pca = config['clustering']['use_pca']
         self.encoder_type = config['model']['backbone']['type']
         self.use_gt = config['data'].get('use_gt')
+        self.spatial_resolution = config['clustering']['spatial_resolution']
         if self.encoder_type == 'resnet50':
             self.feature_resolution = 7
         else:
@@ -155,7 +156,7 @@ class BYOLModel(torch.nn.Module):
         coords = torch.stack(torch.meshgrid(torch.arange(14, device='cuda'), torch.arange(14, device='cuda'),indexing='ij'), 0)
         coords = coords[None].repeat(feats.shape[0], 1, 1, 1).float()
         if self.no_slic:
-            raw_image_downsampled = F.adaptive_avg_pool2d(raw_image,14)
+            raw_image_downsampled = F.adaptive_avg_pool2d(raw_image,self.spatial_resolution,self.spatial_resolution)
             raw_image_downsampled = denormalize(raw_image_downsampled)
             raw_image_downsampled = rgb_to_hsv(raw_image_downsampled)
             super_pixel_pooled = torch.cat((raw_image_downsampled*self.w_color,feats,coords*self.w_spatial),dim=1).permute(0,2,3,1).flatten(1,2).contiguous() # B X 196 X 1027
