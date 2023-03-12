@@ -94,5 +94,5 @@ world_size: 8
 
 eval:
   img_dir: ./imagenet/images
-  knn: 20 # 0 to disable
+  knn: 0 # 0 to disable
   eval_step: 1
