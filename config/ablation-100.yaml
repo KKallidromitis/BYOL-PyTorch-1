@@ -10,6 +10,8 @@ clustering:
   add_views: true
   batch_size: 0
   gather: false
+  policy: grid # or odin
+  sub_sample_size: 0
   no_slic: true
   superpixel: slic # switch SLIC vs FH
   per_image: false
@@ -17,10 +19,10 @@ clustering:
     epochs:
     - 0
     - 300
-    type: random
+    type: linear
     values:
-    - 4
-    - 128
+    - 8
+    - 1
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
@@ -71,6 +73,7 @@ optimizer:
   exclude_bias_and_bn: true
   legacy_schedule: false
   lr_type: cosine
+  scale_lr_by_k: 16
   momentum: 0.9
   scheduler:
     epochs:
@@ -91,5 +94,5 @@ world_size: 8
 
 eval:
   img_dir: ./imagenet/images
-  knn: 0 # 0 to disable
+  knn: 20 # 0 to disable
   eval_step: 1

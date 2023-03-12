@@ -54,6 +54,7 @@ class BYOLModel(torch.nn.Module):
             self.kmeans = None
         self.kmeans_gather = config['clustering']['gather'] # NOT TESTED
         self.no_slic  = config['clustering']['no_slic']
+        self.mask_clustering  = config['clustering']['policy']
         self.rank = config['rank']
         self.add_views =  config['clustering']['add_views']
         self.use_pca = config['clustering']['use_pca']
@@ -251,20 +252,23 @@ class BYOLModel(torch.nn.Module):
                 self.kmeans = None
         # Get spanning view embeddings
         with torch.no_grad():
-            if self.n_kmeans < 9999:
-                if self.add_views:
-                    converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet,roi_t)
-                    converted_idx_b = converted_idx_b[:b].contiguous()
-                    converted_idx = converted_idx[:b].contiguous()
-                else:
-                    converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet,roi_t) # B X C X 56 X 56, B X 56 X 56
-            elif not self.no_slic:
-                converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
-                converted_idx = torch.argmax(converted_idx_b,1)
-            else: # no slic
-                spatial_map = self.get_spatial_mask(14,b) # B X H X W
+            if self.mask_clustering == 'odin':
+                if self.n_kmeans < 9999: # K means + SLIC 
+                    if self.add_views:
+                        converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet,roi_t)
+                        converted_idx_b = converted_idx_b[:b].contiguous()
+                        converted_idx = converted_idx[:b].contiguous()
+                    else:
+                        converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet,roi_t) # B X C X 56 X 56, B X 56 X 56
+                elif not self.no_slic :  # K =9999  + SLIC , detcon
+                    converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
+                    converted_idx = torch.argmax(converted_idx_b,1)
+            elif self.mask_clustering == 'grid': 
+                spatial_map = self.get_spatial_mask(int(self.n_kmeans),b) # B X H X W
                 converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
+            else:
+                raise NotImplementedError
             raw_masks = torch.ones(b,1,0,0).cuda()
             raw_mask_target = converted_idx
             #TODO: Move this to config, mask size before downsample
