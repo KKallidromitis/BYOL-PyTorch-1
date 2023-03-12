@@ -11,8 +11,8 @@ import PIL.Image as InterpolationMode
 
 class CUBDataset(Dataset):
 
-    def __init__(self,image_root,anno_root,split_file='/home/jacklishufan/mmsegmentation/CUB/train_val_test_split.txt',
-    image_file='/home/jacklishufan/mmsegmentation/CUB/CUB_200_2011/images.txt',
+    def __init__(self,image_root,anno_root,split_file='/shared/jacklishufan/CUB/train_val_test_split.txt',
+    image_file='/shared/jacklishufan/CUB/CUB_200_2011/images.txt',
     split='test'
     ) -> None:
         super().__init__()
@@ -48,7 +48,7 @@ class CUBDataset(Dataset):
             with open(split_file) as f:
                 splits = f.readlines()
             test = []
-            with open('/home/jacklishufan/mmsegmentation/CUB/CUB_200_2011/images.txt') as f:
+            with open('/shared/jacklishufan/CUB/CUB_200_2011/images.txt') as f:
                 all_files = f.readlines()
             all_files = list(os.path.join(x.replace('\n','').split(' ')[1]) for x in all_files if x)
             for r,f in zip(splits,all_files):

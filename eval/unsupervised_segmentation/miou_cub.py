@@ -27,11 +27,16 @@ backbone = models.resnet50(pretrained=False)
 
 #path = '/shared/jacklishufan/05-18-01-49-300.pth'
 #path = '/shared/jacklishufan/pixpro-400.pth'
-path = '/shared/jacklishufan/07-18-16-25.pth'
+#path = '/shared/jacklishufan/07-18-16-25.pth'
+#path = '/shared/jacklishufan/ablation2/11-05-03-13.pth'
+path = '/shared/jacklishufan/mmcls/region-cl-200.pth'
 #path = '/shared/jacklishufan/detcoon-fullscale-bn-300.pth'
 
-state = torch.load(path)
-backbone.load_state_dict(state)
+
+state = torch.load(path)#['state_dict']
+if 'state_dict' in state:
+    state = state['state_dict']
+backbone.load_state_dict(state,strict=False)
 encoder = nn.Sequential(*list(backbone.children())[:-2])
 encoder = IntermediateLayerGetter(encoder, return_layers={'7':'out','6':'c4'})
 # data_config=dict(
