@@ -16,6 +16,8 @@ parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_
                     help="Experiment to run. Default is Imagenet 300 epochs")
 parser.add_argument("--name", metavar="Log Name", default="", 
                     help="Name of wandb entry")
+parser.add_argument("--skip_eval", action='store_true',
+                    help="Name of wandb entry")
                     
 def run_task(config):
     logging = logging_util.get_std_logging()
@@ -34,7 +36,7 @@ def run_task(config):
     rs = None
     trainer.resume_model(model_path=rs)
     start_epoch = trainer.start_epoch
-
+    
     for epoch in range(start_epoch + 1, trainer.total_epochs + 1):
         trainer.train_epoch(epoch, printer=logging.info)
         trainer.save_checkpoint(epoch)
@@ -48,6 +50,8 @@ def main():
     assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+    if args.skip_eval:
+        config['eval']['knn'] = 0
 
     if args.local_rank==0:
         print("=> Config Details")

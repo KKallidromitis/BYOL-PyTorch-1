@@ -36,6 +36,7 @@ class BYOLTrainer():
         self.world_size = self.config['world_size']
         self.rank = self.config['rank']
         self.gpu = self.config['local_rank']
+        print(self.gpu)
         self.distributed = self.config['distributed']
 
         """get the train parameters!"""
@@ -140,7 +141,7 @@ class BYOLTrainer():
         )
         self.data_loader_eval_train = torch.utils.data.DataLoader(dataset_eval_train,batch_size=k_nn_batch_size,sampler=sampler_eval_train,num_workers=4)
         self.data_loader_eval_test = torch.utils.data.DataLoader(dataset_eval_test,batch_size=k_nn_batch_size,sampler=sampler_eval_test,num_workers=4)
-
+        self.init_time = time.time()
     def construct_model(self):
         """get data loader"""
         self.stage = self.config['stage']
@@ -186,7 +187,7 @@ class BYOLTrainer():
             self.model = DDP(self.model, delay_allreduce=True)
         #cosine_sim = lambda x,y: torch.einsum('nd,md->nm',x,y)
         self.kmeans = KMeans(5)
-        self.scale_lr_by_k = self.config['optimizer']['scale_lr_by_k']
+        self.scale_lr_by_k = 0#self.config['optimizer']['scale_lr_by_k']
         print("amp init end!")
 
     # resume snapshots from pre-train
@@ -199,7 +200,7 @@ class BYOLTrainer():
             checkpoint = torch.load(model_path, map_location=self.device)
 
             self.start_epoch = checkpoint['epoch']
-            self.steps = checkpoint['steps'] # * 2
+            self.steps = int(checkpoint['steps']  * 8 / 7)
             self.model.load_state_dict(checkpoint['model'], strict=False)
             self.optimizer.load_state_dict(checkpoint['optimizer'])
             amp.load_state_dict(checkpoint['amp'])
@@ -255,11 +256,28 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
-        if self.k_means_loss:
-            return self._forward_k_means_loss(preds, targets,masks,raw_mask,mask_target)
-        else:
-            return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
+    def forward_loss(self, z_dict):
+        # weights = dict(
+        #     c5=1.0,
+        #     c6=0.5,
+        #     c7=0.5,
+        #     c8=0.5
+        # )
+        weights = dict(
+            c5=1.0,
+            c6=2.0,
+            c7=3.0,
+            c8=4.0,
+        )
+        loss = torch.FloatTensor([0.0]).mean().to(self.device)
+        for k,v in z_dict.items():
+            pred,target,mask = v
+            pred = F.normalize(pred,dim=1)
+            target = F.normalize(target,dim=1)
+            mse = ((pred-target)**2).sum(1,keepdim=True) * mask # B 1 H W
+            mse = mse.sum() / (mask.sum()+1e-9) * weights.get(k,1.0)
+            loss += mse
+        return loss
     
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
         zero = torch.tensor(0.0)
@@ -326,6 +344,7 @@ class BYOLTrainer():
             self.model.train()
 
     def train_epoch(self, epoch, printer=print):
+        torch.cuda.empty_cache()
         batch_time = eval_util.AverageMeter()
         data_time = eval_util.AverageMeter()
         forward_time = eval_util.AverageMeter()
@@ -342,15 +361,17 @@ class BYOLTrainer():
         i = 0
         use_masknet = False # epoch > 30
         #breakpoint()
-        if self.steps % self.eval_step == 0 and self.knn > 0:
+        if epoch % self.eval_step == 0 and self.knn > 0:
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
                 feat_dim = 768 if self.backbone_type  in ['vit-deconv','vit'] else 2048
-                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim)
+                with torch.no_grad():
+                    kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim)
                 net.train()
                 del net
                 self.model.train()
+        total_iter = len(self.train_loader)
         while images is not None:
             i += 1
             clustering_k = self.clustering_scheduler.get_num_segments(epoch)
@@ -375,12 +396,12 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
+            z_dict = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
             clustering_k=clustering_k)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+            loss = self.forward_loss(z_dict)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':
@@ -413,15 +434,15 @@ class BYOLTrainer():
                         'lr': round(self.optimizer.param_groups[0]["lr"], 5),
                         'mm': round(self.mm, 5),
                         'loss': round(loss_meter.val, 5),
-                        "eh_obj":round(eh_obj.item(),5),
-                        "eh_dist":round(eh_dist.item(),5),
-                        "inv_loss":round(inv_loss.item(),5),
-                        "mask_loss":round(mask_loss.item(),5),
-                        "num_segs":round(num_segs.item(),5),
+                        # "eh_obj":round(eh_obj.item(),5),
+                        # "eh_dist":round(eh_dist.item(),5),
+                        # "inv_loss":round(inv_loss.item(),5),
+                        # "mask_loss":round(mask_loss.item(),5),
+                        # "num_segs":round(num_segs.item(),5),
                         'Batch Time': round(batch_time.val, 5),
                         'Data Time': round(data_time.val, 5),
                         "K-clustering":clustering_k,
-                        "num_indicator":round(num_indicator.item(),5),
+                        # "num_indicator":round(num_indicator.item(),5),
                         'Forward Time': round(forward_time.val, 5),
                         'Backward Time': round(backward_time.val, 5),
                     })
@@ -431,21 +452,25 @@ class BYOLTrainer():
 
                     # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+                    pass
 
+                    # img_mask = mask_target[0].detach().cpu()
+                    # applied_mask = applied_mask[0].detach().cpu()
 
-                    img_mask = mask_target[0].detach().cpu()
-                    applied_mask = applied_mask[0].detach().cpu()
-
-                    view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
-                    mask_visual = raw_mask[0].permute(1,2,0) 
-                    mh,mw,mc = mask_visual.shape
-                    # mask_visual = mask_visual.view(mh*mw,mc)
-                    # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    if self.enable_wandb:
-                        wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
-
-                printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
+                    # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
+                    # mask_visual = raw_mask[0].permute(1,2,0) 
+                    # mh,mw,mc = mask_visual.shape
+                    # # mask_visual = mask_visual.view(mh*mw,mc)
+                    # # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
+                    # if self.enable_wandb:
+                    #     wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+                todo_epochs = self.total_epochs - self.start_epoch
+                
+                eta_seconds =(time.time()-self.init_time) * ((todo_epochs*total_iter) / ((epoch-self.start_epoch-1)*total_iter+i+1) -1 )
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                printer(f'Epoch: [{epoch}][{i}/{total_iter}]\t'
                         f'Step {self.steps}\t'
+                        f'ETA: {eta_string}\t'
                         f'lr {round(self.optimizer.param_groups[0]["lr"], 5)}\t'
                         f'mm {round(self.mm, 5)}\t'
                         f'Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f})\t'

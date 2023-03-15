@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from utils.kmeans.per_image import BatchwiseKMeans
 from data.byol_transform import denormalize,rgb_to_hsv
-
+from utils.mask_utils import inverse_align
 
 class BYOLModel(torch.nn.Module):
     def __init__(self, config):
@@ -39,7 +39,7 @@ class BYOLModel(torch.nn.Module):
         self.slic_only = True
         self.slic_segments = config['data']['slic_segments']
         self.n_kmeans = config['data']['n_kmeans']
-        self.sub_sample_size = config['clustering']['sub_sample_size']
+        #self.sub_sample_size = config['clustering']['sub_sample_size']
         self.per_image_k_means = config['clustering']['per_image']
         self.clustering_batchsize = config['clustering']['batch_size']
         if self.per_image_k_means:
@@ -59,7 +59,7 @@ class BYOLModel(torch.nn.Module):
         self.use_pca = config['clustering']['use_pca']
         self.encoder_type = config['model']['backbone']['type']
         self.use_gt = config['data'].get('use_gt')
-        self.spatial_resolution = config['clustering']['spatial_resolution']
+        #self.spatial_resolution = config['clustering']['spatial_resolution']
         if self.encoder_type == 'resnet50':
             self.feature_resolution = 7
         else:
@@ -246,71 +246,36 @@ class BYOLModel(torch.nn.Module):
         #breakpoint()
         return self.subsample(maska,mask_ids), self.subsample(maskb,mask_ids)
     
+    def region_pool(self,z_dict,key='c5',dims=dict(c6=4,c7=2,c8=1)):
+        feature1,feature2,msk = z_dict[key]
+        for k,v in dims.items():
+            z_dict[k] = (
+                F.adaptive_avg_pool2d(feature1,(v,v)),
+                F.adaptive_avg_pool2d(feature2,(v,v)),
+                (F.adaptive_avg_pool2d(msk,(v,v)) >0).float(),
+            )
+        return z_dict
+    
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
-        assert im_size == 224
-        
-        # reset k means if necessary
-        if self.n_kmeans != clustering_k:
-            self.n_kmeans = clustering_k
-            if self.n_kmeans < 9999:
-                self.kmeans = self.kmeans_class(self.n_kmeans,)
-            else:
-                self.kmeans = None
-        # Get spanning view embeddings
-        with torch.no_grad():
-            if self.n_kmeans < 9999:
-                if self.add_views:
-                    converted_idx_b,converted_idx = self.do_kmeans(torch.cat([raw_image,view1,view2]),slic_mask,user_masknet,roi_t)
-                    converted_idx_b = converted_idx_b[:b].contiguous()
-                    converted_idx = converted_idx[:b].contiguous()
-                else:
-                    converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet,roi_t) # B X C X 56 X 56, B X 56 X 56
-            elif not self.no_slic:
-                converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
-                converted_idx = torch.argmax(converted_idx_b,1)
-            else: # no slic
-                spatial_map = self.get_spatial_mask(self.spatial_resolution,b) # B X H X W
-                converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
-                converted_idx = torch.argmax(converted_idx_b,1)
-            raw_masks = torch.ones(b,1,0,0).cuda()
-            raw_mask_target = converted_idx
-            #TODO: Move this to config, mask size before downsample
-            mask_dim = 56
-            #TODO: Move this to a separate method just as in selective search branch
-            # rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-            # rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
-            # flip_1 = roi_t[:,0,4]
-            # flip_2 = roi_t[:,1,4]
-            # aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b,rois_1,7),flip_1) # mask output is B X 16 X 7 X 7
-            # aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b,rois_2,7),flip_2) # mask output is B X 16 X 7 X 7
-            aligned_1,aligned_2 = self.roi_align(converted_idx_b,roi_t,self.feature_resolution)
-            mask_b,mask_c,h,w =aligned_1.shape
-            aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
-            aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()
-        # If this is on, only mask in intersetved area will be calculated
-        
-        if self.over_lap_mask:
-            intersection = input_masks.float()
-            intersec_masks_1 = F.adaptive_avg_pool2d(intersection[:,0,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
-            intersec_masks_2 = F.adaptive_avg_pool2d(intersection[:,1,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)
-            aligned_1 = aligned_1 * intersec_masks_1
-            aligned_2 = aligned_2 * intersec_masks_2
-        mask_ids = None
-        if self.sub_sample_size > 0:
-            aligned_1,aligned_2 = self.sample_masks(aligned_1,aligned_2,self.sub_sample_size)
-        masks = torch.cat([aligned_1, aligned_2])
-        masks_inv = torch.cat([aligned_2, aligned_1])
-        num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
-        online_pool = not self.k_means_loss 
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids,online_pool))
+        # assert im_size == 224
+        #print(view1.shape)
+        online_z = self.online_network(torch.cat([view1, view2], dim=0))
+
+        #q,pinds = self.predictor()
         # target network forward
+        rot_t_twoview = torch.cat([roi_t[:,[0,1,2]],roi_t[:,[1,0,2]]])
         with torch.no_grad():
             self._update_target_network(mm)
-            target_z, tinds = self.target_network(torch.cat([view2, view1], dim=0),masks_inv.to('cuda'),mask_ids,mask_ids)
-            target_z = target_z.detach().clone()
-        
-
-        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+            target_z = self.target_network(torch.cat([view2, view1], dim=0))
+            target_z = {k:v.detach().clone() for k,v in target_z.items()}
+        z_dict = {}
+        for k,v in online_z.items():
+            z_dict[k] = inverse_align(v,target_z[k],rot_t_twoview,out_dim=v.shape[-1])
+        z_dict = self.region_pool(z_dict)
+        for k,v in z_dict.items():
+            f1,f2,msk = v
+            z_dict[k] = (self.predictor(f1),f2,msk)
+        return z_dict
 

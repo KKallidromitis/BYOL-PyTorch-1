@@ -88,6 +88,7 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None):
         if gpu is not None:
             inputs = inputs.cuda(gpu)
         features = net(inputs)
+        features = features['c5']
         features = features.mean((2,3))
         trainFeatures[:-1, batch_idx*batchSize:batch_idx *
                       batchSize+batchSize] = features.T
@@ -132,6 +133,7 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None):
                 inputs = inputs.cuda(gpu)
                 targets = targets.cuda(gpu)
             features = net(inputs)
+            features = features['c5']
             features = features.mean((2,3))
             features = torch.nn.functional.normalize(features, dim=1)
             dist = torch.mm(features, trainFeatures)
@@ -143,7 +145,7 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None):
 
             retrieval_one_hot.resize_(batchSize * K, C).zero_()
             retrieval_one_hot.scatter_(1, retrieval.view(-1, 1), 1)
-            yd_transform = yd.clone().div_(sigma).exp_()
+            yd_transform = yd.clone().div(sigma).exp()
             probs = torch.sum(torch.mul(retrieval_one_hot.view(
                 batchSize, -1, C), yd_transform.view(batchSize, -1, 1)), 1)
             _, predictions = probs.sort(1, True)

@@ -21,14 +21,14 @@ clustering:
     - 800
     type: cosine
     values:
-    - 128
+    - 90
     - 4
   use_pca: 0
   weight_color: 0.0
   weight_spatial: 0.0
 data:
   data_workers: 6
-  use_gt: off
+  use_gt: on
   dual_views: true
   image_dir: "/shared/group/coco"
   mask_type: 'coco'
@@ -94,5 +94,5 @@ stage: train
 
 eval:
   img_dir: /shared/group/ilsvrc/
-  knn: 0 # 0 to disable
+  knn: 20 # 0 to disable
   eval_step: 5

@@ -36,7 +36,8 @@ class ImageLoader():
             num_workers=self.data_workers,
             pin_memory=True,
             sampler=self.train_sampler,
-            drop_last=True
+            drop_last=True,
+            persistent_workers=True
         )
         return data_loader
 
@@ -50,9 +51,9 @@ class ImageLoader():
             mask_file = os.path.join(self.image_dir,'masks',stage+'_tf_img_to_'+self.mask_type+'.pkl')
             mask_file_path = os.path.join(self.image_dir,'masks','train_tf')
         
-        transform1 = get_transform(stage)
-        transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2)
-        transform3 = get_transform('raw')
+        transform1 = get_transform(stage,crop_size=self.resize_size)
+        transform2 = get_transform(stage, gb_prob=0.1, solarize_prob=0.2,crop_size=self.resize_size)
+        transform3 = get_transform('raw',crop_size=self.resize_size)
 
         transform = MultiViewDataInjector([transform1, transform2,transform3],self.over_lap_mask,slic_segments=self.slic_segments,do_slic=self.do_slic)
         

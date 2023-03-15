@@ -3,7 +3,7 @@ amp:
   sync_bn: true
 checkpoint:
   ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
-  resume_path:  
+  resume_path: 
   save_epoch: 10
   time_stamp: null
 clustering:
@@ -25,7 +25,7 @@ clustering:
   weight_color: 0.0
   weight_spatial: 0.0
 data:
-  data_workers: 8
+  data_workers: 16
   dual_views: true
   image_dir: ./imagenet
   mask_type: ''
@@ -33,10 +33,10 @@ data:
   num_examples: 1281167
   over_lap_mask: false
   overlap_indicator: true
-  resize_size: 224
+  resize_size: 64
   slic_segments: 100
-  subset: "imagenet100"
-  train_batch_size: 256
+  subset: ""
+  train_batch_size: 2048
   val_batch_size: 32
   weight: false
 distributed: true
@@ -62,10 +62,10 @@ model:
     output_dim: 256
     type: MLP
   projection:
-    hidden_dim: [0] #[4096,2048,1024]
-    input_dim: [2048]
+    hidden_dim: [0,0,0] #[4096,2048,1024]
+    input_dim: [2048,1024,512]
     output_dim: 256
-    keys: [c5]
+    keys: [c5,c4,c3]
     type: MLP
 optimizer:
   base_lr: 0.3

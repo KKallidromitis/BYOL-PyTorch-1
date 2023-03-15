@@ -42,3 +42,5 @@ print(traced_script_module)
 traced_script_module.save('resnet50_byol_imagenet2012.pt')
 
 assert (model(example) == traced_script_module(example)).all()
+
+

@@ -423,7 +423,7 @@ def get_transform(stage, gb_prob=1.0, solarize_prob=0., crop_size=224,crop_cordi
         
         p_list = [
             # transforms.Resize(256),
-            MaskRandomResizedCrop(224,raw=False),
+            MaskRandomResizedCrop(crop_size,raw=False),
             # transforms.CenterCrop(crop_size),
         ]
         
