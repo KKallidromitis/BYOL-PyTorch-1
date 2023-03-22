@@ -187,7 +187,7 @@ class BYOLTrainer():
             self.model = DDP(self.model, delay_allreduce=True)
         #cosine_sim = lambda x,y: torch.einsum('nd,md->nm',x,y)
         self.kmeans = KMeans(5)
-        self.scale_lr_by_k = 0#self.config['optimizer']['scale_lr_by_k']
+        self.scale_lr_by_k = self.config['optimizer']['scale_lr_by_k']
         print("amp init end!")
 
     # resume snapshots from pre-train
