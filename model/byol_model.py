@@ -59,7 +59,7 @@ class BYOLModel(torch.nn.Module):
         self.use_pca = config['clustering']['use_pca']
         self.encoder_type = config['model']['backbone']['type']
         self.use_gt = config['data'].get('use_gt')
-        #self.spatial_resolution = config['clustering']['spatial_resolution']
+        self.spatial_resolution = config['clustering']['spatial_resolution']
         if self.encoder_type == 'resnet50':
             self.feature_resolution = 7
         else:
@@ -276,6 +276,8 @@ class BYOLModel(torch.nn.Module):
         z_dict = self.region_pool(z_dict)
         for k,v in z_dict.items():
             f1,f2,msk = v
-            z_dict[k] = (self.predictor(f1),f2,msk)
+            z_dict[k] = (self.predictor(self.online_network(f1,mode='projection',key=k)),
+                         self.target_network(f2,mode='projection',key=k),
+                         msk)
         return z_dict
 

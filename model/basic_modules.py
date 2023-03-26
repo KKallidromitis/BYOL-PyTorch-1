@@ -225,17 +225,28 @@ class EncoderwithProjection(nn.Module):
             output_dim=config['model']['projection']['output_dim'],
             ) 
             for k in range(len(config['model']['projection']['keys']))})
+        
+        self.projection_map = config['model']['projection_map']
             
         
-    def forward(self, x):
+    def forward(self, x,mode="features",key=None):
         #import ipdb;ipdb.set_trace()
-        x = self.encoder(x) #(B, 2048, 7, 7) # 512, 1024, 2048
-        # dict 
-        out_dict = {}
-        for k,layer in self.projections.items():
-            out_dict[k] =layer(x[k])
+        if mode == 'projection':
+            if key:
+                layer = self.projections[self.projection_map[key]]
+                return layer(x)
+            else:
+                for k,v in x.items():
+                    layer = self.projections[self.projection_map[k]]
+                    out_dict[k] = layer(v) # layer(x[k])
+        else:
+            x = self.encoder(x) #(B, 2048, 7, 7) # 512, 1024, 2048
+            # dict 
+            out_dict = {}
+            for k,layer in self.projections.items():
+                out_dict[k] = x[k] # layer(x[k])
 
-        return out_dict
+            return out_dict
 
 class Predictor(nn.Module):
     def __init__(self, config):

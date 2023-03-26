@@ -126,6 +126,7 @@ class BYOLTrainer():
         n_eval = np.arange(len(dataset_eval))
         knn_train_size = int(0.9 * len(n_eval))
         knn_eval_size = int(0.1 * len(n_eval))
+        self.loss_weight = config['model']['loss_weight']
         np.random.shuffle(n_eval)
         idx_eval = n_eval
         idx_eval_train = idx_eval[:knn_train_size]
@@ -165,6 +166,7 @@ class BYOLTrainer():
         if self.sync_bn:
             net = apex.parallel.convert_syncbn_model(net)
         self.model = net.to(self.device)
+        self.random_p = self.config['model']['random_mask_p']
         print("init byol model end!")
 
         """build optimizer"""
@@ -263,18 +265,20 @@ class BYOLTrainer():
         #     c7=0.5,
         #     c8=0.5
         # )
-        weights = dict(
-            c5=1.0,
-            c6=2.0,
-            c7=3.0,
-            c8=4.0,
-        )
+        # weights = dict(
+        #     c5=1.0,
+        #     c6=2.0,
+        #     c7=3.0,
+        #     c8=4.0,
+        # )
+        weights = self.loss_weight
         loss = torch.FloatTensor([0.0]).mean().to(self.device)
         for k,v in z_dict.items():
             pred,target,mask = v
             pred = F.normalize(pred,dim=1)
             target = F.normalize(target,dim=1)
-            mse = ((pred-target)**2).sum(1,keepdim=True) * mask # B 1 H W
+            mask = mask * (torch.rand_like(mask,device=mask.device) < self.random_p).float()
+            mse = ((pred-target)**2).sum(1,keepdim=True) * mask * 1 / self.random_p # B 1 H W
             mse = mse.sum() / (mask.sum()+1e-9) * weights.get(k,1.0)
             loss += mse
         return loss

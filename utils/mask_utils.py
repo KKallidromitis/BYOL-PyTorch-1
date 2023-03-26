@@ -123,10 +123,21 @@ def inverse_align(features_1,features_2,roi_t,out_dim=56):
     roi_t_2 = roi_t.clone()
     dh =  (roi_t[...,2]-roi_t[...,0])
     dw =  (roi_t[...,3]-roi_t[...,1])
-    roi_t_2[...,0] = (0.0 - roi_t[...,0]) / dh
-    roi_t_2[...,1] = (0.0 - roi_t[...,1]) / dw
-    roi_t_2[...,2] = (1.0 - roi_t[...,0]) / dh
-    roi_t_2[...,3] = (1.0 - roi_t[...,1]) / dw
+    # roi_t[...,[0,2]].min(dims=(-1,-2),keep)
+    # roi_t_2[...,0] = (0.0 - roi_t[...,0]) / dh
+    # roi_t_2[...,1] = (0.0 - roi_t[...,1]) / dw
+    # roi_t_2[...,2] = (1.0 - roi_t[...,0]) / dh
+    # roi_t_2[...,3] = (1.0 - roi_t[...,1]) / dw
+    xx = roi_t[...,[0,2]]
+    yy = roi_t[...,[1,3]]
+    xx0 = xx[:,:2].min(-1,keepdim=True).values.min(-2).values
+    xx1 = xx[:,:2].max(-1,keepdim=True).values.max(-2).values
+    yy0 = yy[:,:2].min(-1,keepdim=True).values.min(-2).values
+    yy1 = yy[:,:2].max(-1,keepdim=True).values.max(-2).values
+    roi_t_2[...,0] = (xx0- roi_t[...,0]) / dh
+    roi_t_2[...,1] = (yy0 - roi_t[...,1]) / dw
+    roi_t_2[...,2] = (xx1 - roi_t[...,0]) / dh
+    roi_t_2[...,3] = (yy1 - roi_t[...,1]) / dw
     idx = torch.LongTensor([1,0,3,2]).to(roi_t.device)
     mask_dim = features_1.shape[-1]
     rois_1 = [roi_t_2[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
