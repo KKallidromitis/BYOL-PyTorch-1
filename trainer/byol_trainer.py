@@ -371,7 +371,7 @@ class BYOLTrainer():
                 net.eval()
                 feat_dim = 768 if self.backbone_type  in ['vit-deconv','vit'] else 2048
                 with torch.no_grad():
-                    kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim)
+                    kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,feat_dim=feat_dim,epoch=epoch)
                 net.train()
                 del net
                 self.model.train()
