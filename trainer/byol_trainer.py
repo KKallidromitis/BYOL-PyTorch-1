@@ -220,6 +220,8 @@ class BYOLTrainer():
         """learning rate warm up and decay"""
         max_lr = self.max_lr
         min_lr = 1e-3 * self.max_lr
+        if k > 9000: 
+            k = 128
 
         
         if step < self.warmup_steps:
@@ -253,13 +255,13 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target):
+    def forward_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights):
         if self.k_means_loss:
             return self._forward_k_means_loss(preds, targets,masks,raw_mask,mask_target)
         else:
-            return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target)
+            return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target,mask_weights)
     
-    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target):
+    def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights):
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
@@ -273,7 +275,10 @@ class BYOLTrainer():
         weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
-        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
+        mask_weights = mask_weights.repeat([2,1])
+        #weights =  (weights * (mask_weights>0)).sum()
+        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights * mask_weights
+        #breakpoint()
         if weights.sum() == 0:
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
@@ -310,12 +315,12 @@ class BYOLTrainer():
         return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
     
     
-    def run_knn(self,force=False):
+    def run_knn(self,force=False,epoch=0):
         if self.knn > 0 or force:
             self.model.eval()
             net = self.model.module.online_network.encoder
             net.eval()
-            kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
+            kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch)
             net.train()
             del net
             self.model.train()
@@ -341,7 +346,7 @@ class BYOLTrainer():
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
-                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn)
+                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch)
                 net.train()
                 del net
                 self.model.train()
@@ -366,12 +371,12 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
+            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask,mask_weights = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
             clustering_k=clustering_k)
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,mask_weights)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':

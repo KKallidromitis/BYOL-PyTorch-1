@@ -67,7 +67,7 @@ def get_knn_iter(x,gpu):
         return x
 
 @torch.no_grad()
-def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None):
+def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epoch=0):
     net.eval()
     gpu = int(os.environ['LOCAL_RANK'])
     print(f"Starting KNN evaluation with K={K}")
@@ -164,7 +164,7 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None):
         print("knn results")
         print(top1*100./total,top1,total)
         wandb.log(
-           { "Knn-ACC":top1*100./total}
+          { "Knn-ACC":top1*100./total,"epoch":epoch}
         )
 
     return top1/total

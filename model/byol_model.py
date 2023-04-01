@@ -68,6 +68,9 @@ class BYOLModel(torch.nn.Module):
         self.w_spatial = config['clustering']['weight_spatial']
         self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
+        self.spatial_dimension = config['clustering']['spatial_dimension']
+        self.spatial_dimension_weights = config['clustering']['spatial_dimension_weights']
+        self.mask_random_p = config['clustering']['random_p']
 
     @torch.no_grad()
     def _initializes_target_network(self):
@@ -240,6 +243,7 @@ class BYOLModel(torch.nn.Module):
     def forward(self, view1, view2, mm, input_masks,raw_image,roi_t,slic_mask,user_masknet=False,full_view_prior_mask=None,clustering_k=64):
         im_size = view1.shape[-1]
         b = view1.shape[0] # batch size
+        device = view1.device
         assert im_size == 224
         
         # reset k means if necessary
@@ -250,6 +254,7 @@ class BYOLModel(torch.nn.Module):
             else:
                 self.kmeans = None
         # Get spanning view embeddings
+        mask_weights = None
         with torch.no_grad():
             if self.n_kmeans < 9999:
                 if self.add_views:
@@ -262,9 +267,19 @@ class BYOLModel(torch.nn.Module):
                 converted_idx_b = to_binary_mask(slic_mask,-1,(56,56))
                 converted_idx = torch.argmax(converted_idx_b,1)
             else: # no slic
-                spatial_map = self.get_spatial_mask(14,b) # B X H X W
-                converted_idx_b = to_binary_mask(spatial_map,-1,(56,56))
-                converted_idx = torch.argmax(converted_idx_b,1)
+                converted_idx_bs = []
+                mask_weights = []
+                for d,weight_d in zip(self.spatial_dimension,self.spatial_dimension_weights):
+                    spatial_map = self.get_spatial_mask(d,b) # B X H X W
+                    converted_idx_b_d = to_binary_mask(spatial_map,-1,(56,56)) # b,c_m,h,w
+                    converted_idx_bs.append(converted_idx_b_d)
+                    mask_weights.extend([weight_d]*converted_idx_b_d.shape[1])
+                mask_weights = torch.tensor(mask_weights).float().to(device).unsqueeze(0).repeat(b,1) # c_m
+                mask_weights = mask_weights * (torch.rand_like(mask_weights,device=device) < self.mask_random_p).float()
+                converted_idx_b = torch.cat(converted_idx_bs,1)
+                converted_idx = torch.argmax(converted_idx_bs[0],1)
+            if mask_weights is None:
+                mask_weights = torch.ones(b,converted_idx_b.shape[1]).float().to(device)
             raw_masks = torch.ones(b,1,0,0).cuda()
             raw_mask_target = converted_idx
             #TODO: Move this to config, mask size before downsample
@@ -303,5 +318,5 @@ class BYOLModel(torch.nn.Module):
             target_z = target_z.detach().clone()
         
 
-        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
+        return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx,mask_weights
 

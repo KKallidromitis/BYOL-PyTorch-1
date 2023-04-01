@@ -1,58 +1,96 @@
-model:
-  base_momentum: 0.99
-  backbone:
-    type: "resnet50"
-    pretrained: false
-  projection:   # src: A.2 of detcon paper
-    type: "MLP" 
-    input_dim: 2048
-    hidden_dim: 4096
-    output_dim: 256
-  predictor:
-    type: "MLP"
-    input_dim: 256
-    hidden_dim: 4096
-    output_dim: 256
-
 amp:
-  sync_bn: True
-  opt_level: "O0"
-
-data:
-  image_dir: "" #TODO: Change to match Japan Cluster
-  mask_type: "fh"
-  resize_size: 224 # src: 3.1
-  data_workers: 16
-  train_batch_size: 32 # src: A.3 (Global should be 4096 = batch_size x num_gpu)
-  val_batch_size: 32 #  Should not matter
-  dual_views: true
-  num_examples: 12000
-
-optimizer:
-  type: lars
-  base_lr: 0.3
-  lr_type: "cosine"
-  momentum: 0.9 # src: Deepmind code config
-  weight_decay: 1.0e-6
-  total_epochs: 300
-  warmup_epochs: 3 # src: Deepmind code; should be 1/100 of total epoches
-  exclude_bias_and_bn: true
-
-loss: #src: 3.1
-  temperature: 0.1
-  mask_rois: 16
-
+  opt_level: O0
+  sync_bn: true
 checkpoint:
-  time_stamp:
+  ckpt_path: "/projects/d001/gce50852/ssl/kos/data/ckpt/detconb/{}/{}_{}_{}.pth.tar"
   resume_path:
-  save_epoch: 10
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
-
-log:
-  log_step: 10
-  log_dir:
-  log_all: False
-
-stage: "train"
+  save_epoch: 50
+  time_stamp: null
+clustering:
+  add_views: false
+  gather: false
+  no_slic: true
+  superpixel: slic # switch SLIC vs FH
+  per_image: false
+  batch_size: 0
+  sub_sample_size: 0 # subsampl masks, 0 disable
+  scheduler:
+    epochs:
+    - 0
+    - 300
+    type: cosine
+    values:
+    - 128
+    - 4
+  use_pca: 0
+  weight_color: 0.0
+  weight_spatial: 0.0
+data:
+  data_workers: 8
+  dual_views: true
+  image_dir: "/projects/d001/gce50852/ssl/kos/data/imagenet/"
+  mask_type: ''
+  n_kmeans: 9999
+  num_examples: 1281167
+  over_lap_mask: false
+  overlap_indicator: true
+  resize_size: 224
+  slic_segments: 100
+  subset: "imagenet100"
+  train_batch_size: 32
+  val_batch_size: 32
+  weight: false
 distributed: true
+local_rank: 0
+log:
+  enable_wandb: false
+  log_all: false
+  log_dir: null
+  log_step: 10
+loss:
+  type: byol
+  mask_rois: 16
+  temperature: 0.1
+model:
+  backbone:
+    pretrained: false
+    type: resnet50
+  base_momentum: 0.99
+  masknet: false
+  predictor:
+    hidden_dim: 4096
+    input_dim: 256
+    output_dim: 256
+    type: MLP
+  projection:
+    hidden_dim: 4096
+    input_dim: 2048
+    output_dim: 256
+    type: MLP
+optimizer:
+  base_lr: 0.3
+  scale_lr_by_k: 16 #scale lr based on a base clustering_k, 0 to disable
+  exclude_bias_and_bn: true
+  legacy_schedule: false
+  lr_type: cosine
+  momentum: 0.9
+  scheduler:
+    epochs:
+    - 0
+    - 100 
+    type: cosine
+    values:
+    - 1
+    - 0
+  total_epochs: 300
+  type: lars
+  warmup_epochs: 3
+  weight_decay: 1.0e-06
+rank: 0
 seed: 0
+stage: train
+
+eval:
+  img_dir: "/projects/d001/gce50852/ssl/kos/data/imagenet/images"
+  knn: 20 # 0 to disable
+  eval_step: 5

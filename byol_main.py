@@ -4,7 +4,7 @@ import os
 import yaml
 import torch
 import torch.distributed as dist
-
+from pathlib import Path
 from trainer.byol_trainer import BYOLTrainer
 from utils import logging_util, distributed_utils
 import argparse
@@ -16,6 +16,7 @@ parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_
                     help="Experiment to run. Default is Imagenet 300 epochs")
 parser.add_argument("--name", metavar="Log Name", default="", 
                     help="Name of wandb entry")
+parser.add_argument("--skip_knn", action='store_true')
                     
 def run_task(config):
     logging = logging_util.get_std_logging()
@@ -39,16 +40,17 @@ def run_task(config):
         trainer.train_epoch(epoch, printer=logging.info)
         trainer.save_checkpoint(epoch)
 
-    trainer.run_knn()
+    trainer.run_knn(trainer.total_epochs + 1)
 
 def main():
     args = parser.parse_args()
     cfg = args.cfg if args.cfg[-5:] == '.yaml' else args.cfg + '.yaml'
     config_path = os.path.join(os.getcwd(), 'config', cfg)
-    assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
+    #assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-
+    if args.skip_knn:
+        config['eval']['knn']=0
     if args.local_rank==0:
         print("=> Config Details")
         print(config) #For reference in logs
