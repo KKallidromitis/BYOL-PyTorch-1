@@ -14,6 +14,7 @@ clustering:
   per_image: false
   spatial_dimension: [12,4,1]
   spatial_dimension_weights: [1.0,2.0,3.0]
+  spatial_dimension_projection_idx: [0,1,2] # [0,1,..model.projection.n_projection - 1], [0,0,0] means shared projection heads
   random_p: 1.0
   scheduler:
     epochs:
@@ -73,6 +74,7 @@ model:
     hidden_dim: 4096
     input_dim: 2048
     output_dim: 256
+    n_projection: 3
     type: MLP
 optimizer:
   base_lr: 0.3

@@ -197,9 +197,11 @@ class EncoderwithProjection(nn.Module):
         input_dim = config['model']['projection']['input_dim']
         hidden_dim = config['model']['projection']['hidden_dim']
         output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
+        n_projection = config['model']['projection']['n_projection']
+        self.projection_dim = output_dim
+        self.projetion = nn.ModuleList([MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim) for _ in range(n_projection) ])    
         
-    def forward(self, x, masks,mask_ids, mnet=None,use_mask=True):
+    def forward(self, x, masks,mask_ids, mnet=None,use_mask=True,projection_idx = None):
         #import ipdb;ipdb.set_trace()
         x = self.encoder(x) #(B, 2048, 7, 7)
         #breakpoint()
@@ -222,8 +224,16 @@ class EncoderwithProjection(nn.Module):
             x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         else:
             x = embedding_local
-        
-        x = self.projetion(x)
+        if len(self.projetion) == 1:
+            x = self.projetion[0](x)
+        else:
+            assert projection_idx is not None
+            xs = torch.zeros((*x.shape[:-1],self.projection_dim),dtype=x.dtype,device=x.device)
+            for idx,projector in enumerate(self.projetion):
+                indices_scale = projection_idx==idx
+                xs[...,indices_scale,:] = projector(x[...,projection_idx==idx,:])
+            x = xs
+
         return x, mask_ids
 
 class Predictor(nn.Module):
