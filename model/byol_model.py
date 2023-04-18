@@ -317,7 +317,7 @@ class BYOLModel(torch.nn.Module):
         masks_inv = torch.cat([aligned_2, aligned_1])
         num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
         online_pool = not self.k_means_loss 
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids,online_pool,projection_idx=projection_idx))
+        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids,online_pool,projection_idx=projection_idx),projection_idx=projection_idx)
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)

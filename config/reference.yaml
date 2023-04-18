@@ -2,7 +2,7 @@ amp:
   opt_level: O0
   sync_bn: true
 checkpoint:
-  ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
+  ckpt_path: ckpt/detconb/{}/{}_{}_{}.pth.tar
   resume_path: null
   save_epoch: 50
   time_stamp: null
@@ -32,7 +32,7 @@ clustering:
 data:
   data_workers: 16
   dual_views: true
-  image_dir: /home/jacklishufan/detconb/imagenet
+  image_dir: "/home/kkallidromitis/data/imagenet/"
   mask_type: ''
   n_kmeans: 9999
   num_examples: 1281167
@@ -42,12 +42,12 @@ data:
   slic_segments: 100
   subset: imagenet100
   train_batch_size: 128
-  val_batch_size: 32
+  val_batch_size: 128
   weight: false
 distributed: true
 eval:
   eval_step: 5
-  img_dir:  /home/jacklishufan/detconb/imagenet/images
+  img_dir:  "/home/kkallidromitis/data/imagenet/images"
   knn: 20
 local_rank: 3
 log:
@@ -58,7 +58,6 @@ log:
 loss:
   mask_rois: 16
   temperature: 0.1
-  ko_leo: 0.1
   type: byol
 model:
   backbone:
@@ -75,7 +74,7 @@ model:
     hidden_dim: 4096
     input_dim: 2048
     output_dim: 256
-    n_projection: 3
+    n_projection: 1
     type: MLP
 optimizer:
   base_lr: 0.3

@@ -199,7 +199,10 @@ class EncoderwithProjection(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         n_projection = config['model']['projection']['n_projection']
         self.projection_dim = output_dim
-        self.projetion = nn.ModuleList([MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim) for _ in range(n_projection) ])    
+        mlps = []
+        for _ in range(n_projection):
+            mlps.append(MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim))
+        self.projetion = nn.ModuleList(mlps)    
         
     def forward(self, x, masks,mask_ids, mnet=None,use_mask=True,projection_idx = None):
         #import ipdb;ipdb.set_trace()
@@ -230,8 +233,8 @@ class EncoderwithProjection(nn.Module):
             assert projection_idx is not None
             xs = torch.zeros((*x.shape[:-1],self.projection_dim),dtype=x.dtype,device=x.device)
             for idx,projector in enumerate(self.projetion):
-                indices_scale = projection_idx==idx
-                xs[...,indices_scale,:] += projector(x[...,projection_idx==idx,:])
+                indices_scale = (projection_idx==idx)
+                xs[...,indices_scale,:] += projector(x[...,indices_scale,:])
             x = xs
 
         return x, mask_ids
@@ -244,10 +247,24 @@ class Predictor(nn.Module):
         input_dim = config['model']['predictor']['input_dim']
         hidden_dim = config['model']['predictor']['hidden_dim']
         output_dim = config['model']['predictor']['output_dim']
-        self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
+        n_projection = config['model']['projection']['n_projection']
+        self.output_dim = output_dim
+        mlps = []
+        for _ in range(n_projection):
+            mlps.append(MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim))
+        self.predictor =  nn.ModuleList(mlps) 
 
-    def forward(self, x, mask_ids):
-        return self.predictor(x), mask_ids
+    def forward(self, x, mask_ids,projection_idx=None):
+        if len(self.predictor) == 1:
+            x = self.predictor[0](x)
+        else:
+            assert projection_idx is not None
+            xs = torch.zeros((*x.shape[:-1],self.output_dim),dtype=x.dtype,device=x.device)
+            for idx,projector in enumerate(self.predictor):
+                indices_scale = (projection_idx==idx)
+                xs[...,indices_scale,:] += projector(x[...,indices_scale,:])
+            x = xs
+        return x, mask_ids
 
 
 class FCNMaskNetV2(nn.Module):

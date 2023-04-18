@@ -111,6 +111,7 @@ class BYOLTrainer():
         """log tools in the running phase"""
         self.steps = 0
         self.log_step = self.config['log']['log_step']
+        self.ko_leo = self.config['loss']['ko_leo']
         self.logging = logging_util.get_std_logging()
         if self.rank == 0:
             self.writer = SummaryWriter(self.config['log']['log_dir'])
@@ -278,13 +279,23 @@ class BYOLTrainer():
         mask_weights = mask_weights.repeat([2,1])
         #weights =  (weights * (mask_weights>0)).sum()
         inv_loss = ((preds-targets)**2).sum(dim=-1) * weights * mask_weights
+        #Masked out area
+        if self.ko_leo > 0:
+            diag_msk = torch.eye(preds.shape[1]).to(preds.device).unsqueeze(0) # * (1-torch.einsum('ba,bc->bac',weights,weights))
+            dist_mat = torch.cdist(preds,targets) * (1-diag_msk) + diag_msk * 10 # pariwise dist with diag larger than 0 
+            avg_dist = dist_mat.min(-1).values.log().mean()
+        else:
+            avg_dist = 2.0
+
         #breakpoint()
         if weights.sum() == 0:
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
-            inv_loss = inv_loss.sum() / weights.sum()        
-    
-        return  inv_loss,zero,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
+            inv_loss = inv_loss.sum() / weights.sum()     
+        total_loss = inv_loss   
+        if self.ko_leo > 0:
+            total_loss += ( 2 - self.ko_leo * avg_dist)
+        return  total_loss,avg_dist,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
     
     def _forward_k_means_loss(self, preds, targets,masks,raw_mask,mask_target):
         zero = torch.tensor(0.0)
