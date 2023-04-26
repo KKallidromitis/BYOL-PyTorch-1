@@ -1,5 +1,4 @@
 #-*- coding:utf-8 -*-
-import imp
 import torch
 import torch.nn as nn
 from torchvision import models
@@ -8,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import timm
 from .vit_deconv import vit_base_patch16 as vit_base_patch16_deconv
+from .swin import registry as swin_models
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
@@ -175,6 +175,18 @@ class FCNMaskNet(nn.Module):
         return x
 
 
+class SwinAdaptger(nn.Module):
+    def __init__(self,backbone):
+        super().__init__()
+        self.backbone = backbone
+    
+    def forward_features(self,x):
+        return self.backbone(x)['res4']
+
+    def forward(self,x):
+        return self.backbone(x)['res5']
+
+
 class EncoderwithProjection(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -187,6 +199,9 @@ class EncoderwithProjection(nn.Module):
         elif net_name == 'vit-deconv':
             base_encoder = vit_base_patch16_deconv()
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'],deconv=True)
+        elif 'swin' in net_name:
+            base_encoder = swin_models[net_name]()
+            self.encoder = SwinAdaptger(base_encoder)
         else:
             ## resnet
             base_encoder = models.__dict__[net_name](pretrained=pretrained)

@@ -41,7 +41,7 @@ data:
   resize_size: 224
   slic_segments: 100
   subset: imagenet100
-  train_batch_size: 128
+  train_batch_size: 4
   val_batch_size: 32
   weight: false
 distributed: true
@@ -63,7 +63,8 @@ loss:
 model:
   backbone:
     pretrained: false
-    type: resnet50
+    feature_resolution: 7
+    type: swin_tiny_patch4_window7_224 # see model/swin.py, also change input dims 
   base_momentum: 0.99
   masknet: false
   predictor:
@@ -73,7 +74,7 @@ model:
     type: MLP
   projection:
     hidden_dim: 4096
-    input_dim: 2048
+    input_dim: 768 
     output_dim: 256
     n_projection: 1
     type: MLP

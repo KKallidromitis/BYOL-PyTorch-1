@@ -119,6 +119,7 @@ class BYOLTrainer():
         # eval
         self.knn = config['eval']['knn']
         self.eval_step = config['eval']['eval_step']
+        self.knn_dim = config['model']['projection']['input_dim']
         self.num_replicas = config['world_size']
         self.rank = config['rank']
         dataset_eval, _, _ = build_imagenet_sampler(config,self.num_replicas,self.rank)
@@ -331,7 +332,7 @@ class BYOLTrainer():
             self.model.eval()
             net = self.model.module.online_network.encoder
             net.eval()
-            kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch)
+            kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch,feat_dim=self.knn_dim)
             net.train()
             del net
             self.model.train()
@@ -357,7 +358,7 @@ class BYOLTrainer():
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
-                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch)
+                kNN(net,self.data_loader_eval_train,self.data_loader_eval_test,self.knn,epoch=epoch,feat_dim=self.knn_dim)
                 net.train()
                 del net
                 self.model.train()
