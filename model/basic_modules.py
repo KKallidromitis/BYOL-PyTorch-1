@@ -249,7 +249,7 @@ class EncoderwithProjection(nn.Module):
             xs = torch.zeros((*x.shape[:-1],self.projection_dim),dtype=x.dtype,device=x.device)
             for idx,projector in enumerate(self.projetion):
                 indices_scale = (projection_idx==idx)
-                xs[...,indices_scale,:] += projector(x[...,indices_scale,:])
+                xs[...,indices_scale,:] += projector(x)[...,indices_scale,:]
             x = xs
 
         return x, mask_ids
