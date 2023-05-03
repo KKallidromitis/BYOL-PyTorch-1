@@ -67,7 +67,7 @@ def get_knn_iter(x,gpu):
         return x
 
 @torch.no_grad()
-def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epoch=0):
+def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epoch=0,use_cls_token=False):
     net.eval()
     gpu = int(os.environ['LOCAL_RANK'])
     print(f"Starting KNN evaluation with K={K}")
@@ -87,8 +87,11 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epo
         batchSize = inputs.size(0)
         if gpu is not None:
             inputs = inputs.cuda(gpu)
-        features = net(inputs)
-        features = features.mean((2,3))
+        if use_cls_token:
+            features = net.forward_cls(inputs)
+        else:
+            features = net(inputs)
+            features = features.mean((2,3))
         trainFeatures[:-1, batch_idx*batchSize:batch_idx *
                       batchSize+batchSize] = features.T
         trainFeatures[-1, batch_idx*batchSize:batch_idx *
@@ -131,8 +134,11 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epo
             if gpu is not None:
                 inputs = inputs.cuda(gpu)
                 targets = targets.cuda(gpu)
-            features = net(inputs)
-            features = features.mean((2,3))
+            if use_cls_token:
+                features = net.forward_cls(inputs)
+            else:
+                features = net(inputs)
+                features = features.mean((2,3))
             features = torch.nn.functional.normalize(features, dim=1)
             dist = torch.mm(features, trainFeatures)
             # if misc.is_main_process():
