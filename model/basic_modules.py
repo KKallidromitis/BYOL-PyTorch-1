@@ -214,10 +214,16 @@ class EncoderwithProjection(nn.Module):
             base_encoder = vit_base_patch16_deconv()
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'],deconv=True)
         elif 'mae' in net_name:
-            base_encoder = swin_models[mae_models]()
+            base_encoder = mae_models[net_name]()
+            if pretrained:
+                msg = base_encoder.load_state_dict(torch.load(pretrained,map_location='cpu')['model'],strict=False)
+                print(msg)
             self.encoder = MAEAdaptger(base_encoder)
         elif 'swin' in net_name:
             base_encoder = swin_models[net_name]()
+            if pretrained:
+                msg = base_encoder.load_state_dict(torch.load(pretrained,map_location='cpu'),strict=False)
+                print(msg)
             self.encoder = SwinAdaptger(base_encoder)
         else:
             ## resnet

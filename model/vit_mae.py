@@ -147,8 +147,9 @@ class MaskedAutoencoderViT(nn.Module):
     def forward(self, imgs,mode="latent"):
         bs,_,h,w = imgs.shape
         latent = self.forward_encoder(imgs)
-        latent = latent[:,1:,:]
         cls = latent[:,0,:]
+        latent = latent[:,1:,:]
+        
         if mode == 'cls':
             return cls
         n,l,d = latent.shape
