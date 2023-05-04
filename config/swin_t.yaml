@@ -65,6 +65,7 @@ model:
     pretrained: false
     feature_resolution: 7
     type: swin_tiny_patch4_window7_224 # see model/swin.py, also change input dims 
+    pretrained: swin_tiny_patch4_window7_224.pth # sanity check, remove this
   base_momentum: 0.99
   masknet: false
   predictor:
