@@ -422,7 +422,7 @@ class BYOLTrainer():
                         'lr': round(self.optimizer.param_groups[0]["lr"], 5),
                         'mm': round(self.mm, 5),
                         'loss': round(loss_meter.val, 5),
-                        "eh_obj":round(eh_obj.item(),5),
+                        # "eh_obj":round(eh_obj.item(),5),
                         "eh_dist":round(eh_dist.item(),5),
                         "inv_loss":round(inv_loss.item(),5),
                         "mask_loss":round(mask_loss.item(),5),

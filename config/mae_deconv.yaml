@@ -64,9 +64,9 @@ loss:
 model:
   backbone:
     pretrained: false
-    feature_resolution: 14
-    type: mae_vit_base_patch16 # see model/swin.py, also change input dims 
-    pretrained: /shared/jacklishufan/mae/mae_visualize_vit_base.pth  # sanity check
+    feature_resolution: 7
+    type: vit-deconv # see model/swin.py, also change input dims 
+    pretrained:   # sanity check
   base_momentum: 0.99
   masknet: false
   predictor:
