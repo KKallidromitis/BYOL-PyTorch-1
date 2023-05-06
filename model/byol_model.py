@@ -285,7 +285,7 @@ class BYOLModel(torch.nn.Module):
                 converted_idx = torch.argmax(converted_idx_bs[0],1)
             if mask_weights is None:
                 mask_weights = torch.ones(b,converted_idx_b.shape[1]).float().to(device)
-            if converted_idx is None:
+            if projection_idx is None:
                 projection_idx = torch.zeros(converted_idx_b.shape[1]).long().to(device)
             raw_masks = torch.ones(b,1,0,0).cuda()
             raw_mask_target = converted_idx
