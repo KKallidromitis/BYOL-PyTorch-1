@@ -355,7 +355,7 @@ class BYOLTrainer():
         i = 0
         use_masknet = False # epoch > 30
         #breakpoint()
-        if self.steps % self.eval_step == 0 and self.knn > 0:
+        if epoch % self.eval_step == 0 and self.knn > 0:
                 self.model.eval()
                 net = self.model.module.online_network.encoder
                 net.eval()
