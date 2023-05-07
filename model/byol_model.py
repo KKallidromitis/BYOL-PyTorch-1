@@ -103,7 +103,8 @@ class BYOLModel(torch.nn.Module):
             self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
             return self._fpn
         else:
-            raise NotImplementedError
+            self._fpn = self.target_network.encoder
+            return self._fpn
             
     def handle_flip(self,aligned_mask,flip):
         '''
@@ -141,8 +142,10 @@ class BYOLModel(torch.nn.Module):
     def get_feature(self,x):
         if self.encoder_type == 'vit-deconv':
             return self.fpn.forward_features(x)[-2] # 14 x 14 
-        else:
+        elif 'resnet' in self.encoder_type:
             return self.fpn(x)['c4']
+        else:
+            return self.fpn.forward_features(x) # 14 x 14 
             
     def do_kmeans(self,raw_image,slic_mask,user_masknet,roi_t):
         
