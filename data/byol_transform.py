@@ -114,9 +114,9 @@ class SSLMaskDataset(VisionDataset):
                     samples = [(os.path.join(root,x.split('_')[0],x),None) for x in samples]
                     #samples = [x for x in samples if os.path.exists(x[0])]
                     self.samples = sorted(samples)
-                    
+
             elif subset == "imagenet100":
-                with open("imagenet100.txt") as f:
+                with open("/home/ace14302yr/detconb-schedule/imagenet100.txt") as f:
                     subset_classes = f.read().splitlines()
                 assert len(subset_classes) == 100
                 samples = []

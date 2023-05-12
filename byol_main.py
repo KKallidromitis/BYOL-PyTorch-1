@@ -46,8 +46,8 @@ def main():
     args = parser.parse_args()
     cfg = args.cfg if args.cfg[-5:] == '.yaml' else args.cfg + '.yaml'
     config_path = os.path.join(os.getcwd(), 'config', cfg)
-    #assert os.path.exists(config_path), f"Could not find {cfg} in configs directory!"
-    with open(config_path, 'r') as f:
+    with open(Path(Path(__file__).parent, 'config/mae_deconv_r2o_dino.yaml'), 'r') as f:
+    #with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     if args.skip_knn:
         config['eval']['knn']=0

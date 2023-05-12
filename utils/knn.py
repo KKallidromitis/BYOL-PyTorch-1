@@ -27,7 +27,7 @@ def build_imagenet_sampler(config, num_replicas, rank):
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
     img_dir = config['eval']['img_dir']
-    dataset = ImageNet100Dataset(os.path.join(img_dir,'train'),anno_file='imagenet100.txt',transform=eval_transforms)
+    dataset = ImageNet100Dataset(os.path.join(img_dir,'train'),anno_file='/home/ace14302yr/detconb-schedule/imagenet100.txt',transform=eval_transforms)
     sampler =  torch.utils.data.DistributedSampler(
             dataset, num_replicas=num_replicas, rank=rank, shuffle=True
     )
@@ -37,7 +37,6 @@ def build_imagenet_sampler(config, num_replicas, rank):
 import imp
 import torch
 import time
-import wandb
 
 from torch.nn.functional import adaptive_avg_pool2d
 from tqdm.cli import tqdm
@@ -169,8 +168,5 @@ def kNN(net, trainloader, testloader, K, sigma=0.07, feat_dim=2048, gpu=None,epo
             f"Evaluating all kNN took an additional {(time.time() - st_time):.1f} seconds")
         print("knn results")
         print(top1*100./total,top1,total)
-        wandb.log(
-          { "Knn-ACC":top1*100./total,"epoch":epoch}
-        )
 
     return top1/total

@@ -2,7 +2,7 @@ amp:
   opt_level: O0
   sync_bn: true
 checkpoint:
-  ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
+  ckpt_path: "/projects/d001/gce50852/ssl/kos/data/ckpt/detconb/dino/{}/{}_{}_{}.pth.tar"
   resume_path: null
   save_epoch: 50
   time_stamp: null
@@ -32,7 +32,7 @@ clustering:
 data:
   data_workers: 16
   dual_views: true
-  image_dir: /home/jacklishufan/detconb/imagenet
+  image_dir: "/projects/d001/gce50852/ssl/kos/data/imagenet/"
   mask_type: ''
   n_kmeans: 9999
   num_examples: 1281167
@@ -47,12 +47,12 @@ data:
 distributed: true
 eval:
   eval_step: 5
-  img_dir:  /home/jacklishufan/detconb/imagenet/images
+  img_dir:  "/projects/d001/gce50852/ssl/kos/data/imagenet/images"
   knn: 20
   use_cls_token: off
 local_rank: 3
 log:
-  enable_wandb: true
+  enable_wandb: false
   log_all: false
   log_dir: null
   log_step: 10
