@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 import yaml
 from torch.utils.data import Subset
-
+from model.dino_loss import DINOLoss
 from tensorboardX import SummaryWriter
 import apex
 from apex.parallel import DistributedDataParallel as DDP
@@ -142,6 +142,16 @@ class BYOLTrainer():
         )
         self.data_loader_eval_train = torch.utils.data.DataLoader(dataset_eval_train,batch_size=k_nn_batch_size,sampler=sampler_eval_train,num_workers=4)
         self.data_loader_eval_test = torch.utils.data.DataLoader(dataset_eval_test,batch_size=k_nn_batch_size,sampler=sampler_eval_test,num_workers=4)
+        self.loss_type = config['loss']['type']
+        if config['loss']['type'] == 'dino':
+            self.dino_loss = DINOLoss(
+                config['loss']['dino']['out_dim'],
+                config['loss']['dino']['n_crop'],
+                config['loss']['dino']['warmup_teacher_temp'],
+                config['loss']['dino']['teacher_temp'],
+                config['loss']['dino']['warmup_teacher_temp_epochs'],
+                self.total_epochs+1,
+            ).to(self.device)
 
     def construct_model(self):
         """get data loader"""
@@ -258,12 +268,32 @@ class BYOLTrainer():
     def adjust_mm(self, step):
         self.mm = 1 - (1 - self.base_mm) * (np.cos(np.pi * step / self.total_steps) + 1) / 2
         
-    def forward_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights):
+    def forward_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights,epoch=0):
         if self.k_means_loss:
             return self._forward_k_means_loss(preds, targets,masks,raw_mask,mask_target)
+        elif self.loss_type == 'dino':
+            return self._forward_dino_loss(preds, targets,masks,raw_mask,mask_target,mask_weights,epoch=0)
         else:
             return self._forward_masked_byol_loss(preds, targets,masks,raw_mask,mask_target,mask_weights)
     
+    def _forward_dino_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights,epoch=0):
+        zero = torch.tensor(0.0)
+        weights = masks.sum(dim=-1).detach()
+        # unshuffle
+        targets = targets.chunk(2)
+        targets = torch.cat([targets[1],targets[0]],dim=0)
+        mask_batch_size = masks.shape[0] // 2
+        mask_exists = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
+        if self.use_weight:
+            weights =  (weights[:mask_batch_size]+weights[mask_batch_size:])/2
+        else:
+            weights = torch.ones_like(weights[:mask_batch_size])
+        if self.overlap_indicator:
+            weights *= mask_exists
+        weights = weights.repeat([2,1]).unsqueeze(-1)
+        inv_loss = self.dino_loss(preds*weights,targets*weights,epoch)
+        total_loss = inv_loss
+        return  total_loss,2.0,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights):
         zero = torch.tensor(0.0)
         weights = masks.sum(dim=-1).detach()
@@ -389,7 +419,7 @@ class BYOLTrainer():
             forward_time.update(time.time() - tflag)
 
             tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,mask_weights)
+            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q,target_z,down_sampled_masks,raw_mask,mask_target,mask_weights,epoch)
 
             self.optimizer.zero_grad()
             if self.opt_level == 'O0':

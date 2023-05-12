@@ -96,9 +96,6 @@ class BYOLModel(torch.nn.Module):
     def fpn(self):
         if self._fpn:
             return self._fpn
-        if self.encoder_type == 'vit' or self.encoder_type == 'vit-deconv':
-            self._fpn = self.target_network.encoder
-            return self._fpn
         elif self.encoder_type == 'resnet50':
             self._fpn = IntermediateLayerGetter(self.target_network.encoder, return_layers={'7':'out','6':'c4'})
             return self._fpn

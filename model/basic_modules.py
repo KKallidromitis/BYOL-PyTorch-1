@@ -210,8 +210,8 @@ class EncoderwithProjection(nn.Module):
         if net_name == 'vit':
             base_encoder = timm.create_model('vit_base_patch16_224', pretrained=False,global_pool='',class_token =True)
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'])
-        elif net_name == 'vit-deconv':
-            base_encoder = vit_base_patch16_deconv()
+        elif 'vit-deconv' in net_name:
+            base_encoder = vit_deconv_models[net_name]()
             self.encoder = VitWrapper(base_encoder,config['model']['backbone']['feature_resolution'],deconv=True)
         elif 'mae' in net_name:
             base_encoder = mae_models[net_name]()
