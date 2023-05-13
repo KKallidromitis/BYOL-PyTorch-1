@@ -2,9 +2,9 @@ amp:
   opt_level: O0
   sync_bn: true
 checkpoint:
-  ckpt_path: "/projects/d001/gce50852/ssl/kos/data/ckpt/detconb/dino/{}/{}_{}_{}.pth.tar"
+  ckpt_path: "/projects/d001/gce50852/ssl/kos/data/ckpt/detconb/ablations/{}/{}_{}_{}.pth.tar"
   resume_path: null
-  save_epoch: 50
+  save_epoch: 20
   time_stamp: null
 clustering:
   add_views: false
@@ -56,17 +56,12 @@ log:
   log_all: false
   log_dir: null
   log_step: 10
+  log_id: 0
 loss:
   mask_rois: 16
   temperature: 0.1
-  ko_leo: 0.0
-  type: dino
-  dino:
-    out_dim: 256
-    n_crop: 2
-    warmup_teacher_temp: 0.04
-    teacher_temp: 0.04
-    warmup_teacher_temp_epochs: 0
+  ko_leo: 0
+  type: byol
 model:
   backbone:
     pretrained: false

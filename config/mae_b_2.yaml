@@ -1,0 +1,106 @@
+amp:
+  opt_level: O0
+  sync_bn: true
+checkpoint:
+  ckpt_path: "/projects/d001/gce50852/ssl/kos/data/ckpt/detconb/ablations/{}/{}_{}_{}.pth.tar"
+  resume_path: null
+  save_epoch: 20
+  time_stamp: null
+clustering:
+  add_views: false
+  batch_size: 0
+  gather: false
+  no_slic: true
+  per_image: false
+  spatial_dimension: [12,4,1]
+  spatial_dimension_weights: [0.0,0.0,1.0]
+  spatial_dimension_projection_idx: [0,0,0] # [0,1,..model.projection.n_projection - 1], [0,0,0] means shared projection heads
+  random_p: 1.0
+  scheduler:
+    epochs:
+    - 0
+    - 100
+    type: cosine
+    values:
+    - 9999
+    - 9999
+  sub_sample_size: 0
+  superpixel: slic
+  use_pca: 0
+  weight_color: 0.0
+  weight_spatial: 0.0
+data:
+  data_workers: 16
+  dual_views: true
+  image_dir: "/projects/d001/gce50852/ssl/kos/data/imagenet/"
+  mask_type: ''
+  n_kmeans: 9999
+  num_examples: 1281167
+  over_lap_mask: false
+  overlap_indicator: true
+  resize_size: 224
+  slic_segments: 100
+  subset: 'imagenet100'
+  train_batch_size: 16
+  val_batch_size: 16
+  weight: false
+distributed: true
+eval:
+  eval_step: 5
+  img_dir:  "/projects/d001/gce50852/ssl/kos/data/imagenet/images"
+  knn: 20
+  use_cls_token: off
+local_rank: 3
+log:
+  enable_wandb: false
+  log_all: false
+  log_dir: null
+  log_step: 10
+  log_id: 11
+loss:
+  mask_rois: 16
+  temperature: 0.1
+  ko_leo: 0
+  type: byol
+model:
+  backbone:
+    pretrained: false
+    feature_resolution: 14
+    type: mae_vit_base_patch16 # see model/swin.py, also change input dims 
+    pretrained:   # sanity check
+  base_momentum: 0.99
+  masknet: false
+  predictor:
+    hidden_dim: 4096
+    input_dim: 256
+    output_dim: 256
+    type: MLP
+  projection:
+    hidden_dim: 4096
+    input_dim: 768 
+    output_dim: 256
+    n_projection: 1
+    type: MLP
+optimizer:
+  base_lr: 0.3
+  exclude_bias_and_bn: true
+  legacy_schedule: false
+  lr_type: cosine
+  momentum: 0.9
+  scale_lr_by_k: 16
+  scheduler:
+    epochs:
+    - 0
+    - 100
+    type: cosine
+    values:
+    - 1
+    - 0
+  total_epochs: 100
+  type: lars
+  warmup_epochs: 10
+  weight_decay: 1.0e-06
+rank: 7
+seed: 0
+stage: train
+world_size: 128
