@@ -72,7 +72,7 @@ class BYOLModel(torch.nn.Module):
         self.spatial_dimension_weights = config['clustering']['spatial_dimension_weights']
         self.spatial_dimension_projection_idx = config['clustering']['spatial_dimension_projection_idx']
         self.mask_random_p = config['clustering']['random_p']
-
+        self.multi_crop = config['clustering'].get('multi_crop',0)
     @torch.no_grad()
     def _initializes_target_network(self):
         for param_q, param_k in zip(self.online_network.parameters(), self.target_network.parameters()):
@@ -302,6 +302,16 @@ class BYOLModel(torch.nn.Module):
             mask_b,mask_c,h,w =aligned_1.shape
             aligned_1 = aligned_1.reshape(mask_b,mask_c,h*w).detach()
             aligned_2 = aligned_2.reshape(mask_b,mask_c,h*w).detach()
+            if self.multi_crop:
+                aligned_1_r,aligned_2_r = self.roi_align(converted_idx_b,roi_t,56)
+                aligned_3,aligned_4 = self.roi_align(aligned_1_r,roi_t,self.feature_resolution)
+                aligned_5,aligned_6 = self.roi_align(aligned_2_r,roi_t,self.feature_resolution)
+                aligned_3 = aligned_3.reshape(mask_b,mask_c,h*w).detach()
+                aligned_4 = aligned_4.reshape(mask_b,mask_c,h*w).detach()
+                aligned_5 = aligned_5.reshape(mask_b,mask_c,h*w).detach()
+                aligned_6 = aligned_6.reshape(mask_b,mask_c,h*w).detach()
+                view3,view4 = self.roi_align(view1,roi_t,view1.shape[-1])
+                view5,view6 = self.roi_align(view2,roi_t,view2.shape[-1])
         # If this is on, only mask in intersetved area will be calculated
         
         if self.over_lap_mask:
@@ -313,11 +323,21 @@ class BYOLModel(torch.nn.Module):
         mask_ids = None
         if self.sub_sample_size > 0:
             aligned_1,aligned_2 = self.sample_masks(aligned_1,aligned_2,self.sub_sample_size)
-        masks = torch.cat([aligned_1, aligned_2])
+
+        if self.multi_crop == 4:
+            masks = torch.cat([aligned_1, aligned_2,aligned_3,aligned_4,aligned_5,aligned_6])
+            views = torch.cat([view1, view2,view3,view4,view5,view6])
+        elif self.multi_crop == 2:
+            masks = torch.cat([aligned_1, aligned_2,aligned_3,aligned_6])
+            views = torch.cat([view1, view2,view3,view6])
+        else:
+            assert self.multi_crop == 0
+            masks = torch.cat([aligned_1, aligned_2])
+            views = torch.cat([view1, view2])
         masks_inv = torch.cat([aligned_2, aligned_1])
         num_segs = torch.FloatTensor([x.unique().shape[0] for x in converted_idx]).mean()
         online_pool = not self.k_means_loss 
-        q,pinds = self.predictor(*self.online_network(torch.cat([view1, view2], dim=0),masks.to('cuda'),mask_ids,mask_ids,online_pool,projection_idx=projection_idx),projection_idx=projection_idx)
+        q,pinds = self.predictor(*self.online_network(views,masks.to('cuda'),mask_ids,mask_ids,online_pool,projection_idx=projection_idx),projection_idx=projection_idx)
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)

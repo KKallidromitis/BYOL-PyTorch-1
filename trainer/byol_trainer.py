@@ -18,6 +18,7 @@ from apex import amp
 
 from model import BYOLModel
 from optimizer import LARS
+from torch.optim import AdamW
 from data import ImageLoader,ImageLoadeCOCO
 from utils import distributed_utils, params_util, logging_util, eval_util
 from utils.data_prefetcher import data_prefetcher
@@ -143,10 +144,11 @@ class BYOLTrainer():
         self.data_loader_eval_train = torch.utils.data.DataLoader(dataset_eval_train,batch_size=k_nn_batch_size,sampler=sampler_eval_train,num_workers=4)
         self.data_loader_eval_test = torch.utils.data.DataLoader(dataset_eval_test,batch_size=k_nn_batch_size,sampler=sampler_eval_test,num_workers=4)
         self.loss_type = config['loss']['type']
+        self.multi_crop = config['clustering'].get('multi_crop',0)
         if config['loss']['type'] == 'dino':
             self.dino_loss = DINOLoss(
                 config['loss']['dino']['out_dim'],
-                config['loss']['dino']['n_crop'],
+                config['loss']['dino']['n_crop']+self.multi_crop,
                 config['loss']['dino']['warmup_teacher_temp'],
                 config['loss']['dino']['teacher_temp'],
                 config['loss']['dino']['warmup_teacher_temp_epochs'],
@@ -186,8 +188,12 @@ class BYOLTrainer():
         if self.config['model']['masknet']:
             parms.append(self.model.masknet)
         params = params_util.collect_params(parms,exclude_bias_and_bn=exclude_bias_and_bn)
-        self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
-
+        if self.config['optimizer']['type'] == 'lars':
+            self.optimizer = LARS(params, lr=self.max_lr, momentum=momentum, weight_decay=weight_decay)
+        elif self.config['optimizer']['type'] == 'adamw':
+            self.optimizer = AdamW(params,lr=self.max_lr,weight_decay=weight_decay)
+        else:
+            raise NotImplemented
         """init amp"""
         print("amp init!")
         self.model, self.optimizer = amp.initialize(
@@ -278,6 +284,8 @@ class BYOLTrainer():
     
     def _forward_dino_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights,epoch=0):
         zero = torch.tensor(0.0)
+        bb = mask_target.shape
+        masks = masks[:len(targets)]
         weights = masks.sum(dim=-1).detach()
         # unshuffle
         targets = targets.chunk(2)
@@ -290,12 +298,14 @@ class BYOLTrainer():
             weights = torch.ones_like(weights[:mask_batch_size])
         if self.overlap_indicator:
             weights *= mask_exists
-        weights = weights.repeat([2,1]).unsqueeze(-1)
-        inv_loss = self.dino_loss(preds*weights,targets*weights,epoch)
+        bb = weights.shape[0]
+        weights = weights.repeat([2+self.multi_crop,1]).unsqueeze(-1)
+        inv_loss = self.dino_loss(preds*weights,targets*weights[:bb*2],epoch)
         total_loss = inv_loss
         return  total_loss,2.0,zero,inv_loss,torch.tensor(0.0),mask_exists.float().sum(-1).mean().detach()
     def _forward_masked_byol_loss(self, preds, targets,masks,raw_mask,mask_target,mask_weights):
         zero = torch.tensor(0.0)
+        masks = masks[:len(targets)]
         weights = masks.sum(dim=-1).detach()
         mask_batch_size = masks.shape[0] // 2
         mask_exists = torch.logical_and(weights[:mask_batch_size]>1e-3,weights[mask_batch_size:]>1e-3).float()
@@ -305,12 +315,23 @@ class BYOLTrainer():
             weights = torch.ones_like(weights[:mask_batch_size])
         if self.overlap_indicator:
             weights *= mask_exists
-        weights = weights.repeat([2,1])
         preds = F.normalize(preds, dim=-1) 
         targets = F.normalize(targets, dim=-1) 
-        mask_weights = mask_weights.repeat([2,1])
-        #weights =  (weights * (mask_weights>0)).sum()
-        inv_loss = ((preds-targets)**2).sum(dim=-1) * weights * mask_weights
+        if not self.multi_crop:
+            weights = weights.repeat([2,1])
+            mask_weights = mask_weights.repeat([2,1])
+            #weights =  (weights * (mask_weights>0)).sum()
+            inv_loss = ((preds-targets)**2).sum(dim=-1) * weights * mask_weights
+        else:
+            n_crops = 2 + self.multi_crop
+            preds = preds.chunk(n_crops)
+            targets = targets.chunk(2)
+            targets = [targets[1],targets[0]]
+            inv_loss = 0.0
+            for idx,z_1 in enumerate(preds):
+                for j in range(2):
+                    if idx != j:
+                        inv_loss += ((z_1-targets[j])**2).sum(dim=-1) * weights * mask_weights
         #Masked out area
         if self.ko_leo > 0:
             diag_msk = torch.eye(preds.shape[1]).to(preds.device).unsqueeze(0) # * (1-torch.einsum('ba,bc->bac',weights,weights))
@@ -323,7 +344,8 @@ class BYOLTrainer():
         if weights.sum() == 0:
             inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
         else:
-            inv_loss = inv_loss.sum() / weights.sum()     
+            factor = float(self.multi_crop+2) if self.multi_crop else 1.0
+            inv_loss = inv_loss.sum() / weights.sum()  / factor
         total_loss = inv_loss   
         if self.ko_leo > 0:
             total_loss += ( 2 - self.ko_leo * avg_dist)

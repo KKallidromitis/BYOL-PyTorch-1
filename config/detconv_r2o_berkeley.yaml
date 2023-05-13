@@ -4,7 +4,7 @@ amp:
 checkpoint:
   ckpt_path: /shared/jacklishufan/ckpt/detconb/{}/{}_{}_{}.pth.tar
   resume_path: null
-  save_epoch: 50
+  save_epoch: 20
   time_stamp: null
 clustering:
   add_views: false
@@ -16,7 +16,6 @@ clustering:
   spatial_dimension_weights: [1.0,2.0,3.0]
   spatial_dimension_projection_idx: [0,0,0] # [0,1,..model.projection.n_projection - 1], [0,0,0] means shared projection heads
   random_p: 1.0
-  multi_crop: 2
   scheduler:
     epochs:
     - 0
@@ -33,7 +32,7 @@ clustering:
 data:
   data_workers: 16
   dual_views: true
-  image_dir: /home/jacklishufan/detconb/imagenet
+  image_dir: /home/jacklishufan/detconb/imagenet/images
   mask_type: ''
   n_kmeans: 9999
   num_examples: 1281167
@@ -43,7 +42,7 @@ data:
   slic_segments: 100
   subset: imagenet100
   train_batch_size: 16
-  val_batch_size: 32
+  val_batch_size: 16
   weight: false
 distributed: true
 eval:
@@ -53,26 +52,21 @@ eval:
   use_cls_token: off
 local_rank: 3
 log:
-  enable_wandb: true
+  enable_wandb: false
   log_all: false
   log_dir: null
   log_step: 10
+  log_id: 0
 loss:
   mask_rois: 16
   temperature: 0.1
-  ko_leo: 0.0
-  type: dino
-  dino:
-    out_dim: 256
-    n_crop: 2
-    warmup_teacher_temp: 0.04
-    teacher_temp: 0.04
-    warmup_teacher_temp_epochs: 0
+  ko_leo: 0
+  type: byol
 model:
   backbone:
     pretrained: false
-    feature_resolution: 14
-    type: mae_vit_base_patch16 # see model/swin.py, also change input dims 
+    feature_resolution: 7
+    type: vit-deconv # see model/swin.py, also change input dims 
     pretrained: #/shared/jacklishufan/mae/mae_visualize_vit_base.pth  # sanity check
   base_momentum: 0.99
   masknet: false
@@ -88,12 +82,12 @@ model:
     n_projection: 1
     type: MLP
 optimizer:
-  base_lr: 0.0005
+  base_lr: 0.3
   exclude_bias_and_bn: true
   legacy_schedule: false
   lr_type: cosine
   momentum: 0.9
-  scale_lr_by_k: 1
+  scale_lr_by_k: 16
   scheduler:
     epochs:
     - 0
@@ -103,9 +97,9 @@ optimizer:
     - 1
     - 0
   total_epochs: 300
-  type: adamw
+  type: lars
   warmup_epochs: 3
-  weight_decay: 0.04
+  weight_decay: 1.0e-06
 rank: 7
 seed: 0
 stage: train
