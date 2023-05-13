@@ -9,6 +9,7 @@ import timm
 from .vit_deconv import vit_base_patch16 as vit_base_patch16_deconv
 from .swin import registry as swin_models
 from .vit_mae import registry as mae_models
+from .vit_deconv import registry as vit_deconv_models
 
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim,mask_roi=16):
