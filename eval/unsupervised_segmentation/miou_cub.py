@@ -3,7 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
-from mmseg.datasets import build_dataset
+# from mmseg.datasets import build_dataset
 from matplotlib import pyplot as plt
 import torchmetrics
 import numpy as np
@@ -12,10 +12,10 @@ import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 import tqdm
 # DATASET PATH
-path = '/shared/jacklishufan/CUB/CUB_200_2011/images'
-maske_math = '/shared/jacklishufan/CUB/segmentations'
+path = '/projects/d001/gce50852/nishio/CUB_200_2011/images'
+maske_math = '/projects/d001/gce50852/nishio/CUB_200_2011/segmentations'
 from cub_dataset import *
-dataset = CUBDataset(path,maske_math)
+dataset = CUBDataset(path, maske_math)
 
 
 N_CLUSTERS = 5
@@ -29,9 +29,9 @@ backbone = models.resnet50(pretrained=False)
 #path = '/shared/jacklishufan/pixpro-400.pth'
 #path = '/shared/jacklishufan/07-18-16-25.pth'
 #path = '/shared/jacklishufan/ablation2/11-05-03-13.pth'
-path = '/shared/jacklishufan/mmcls/region-cl-200.pth'
+#path = '/shared/jacklishufan/mmcls/region-cl-200.pth'
 #path = '/shared/jacklishufan/detcoon-fullscale-bn-300.pth'
-
+path = '/home/acf15772rb/r2o-vit/ckpt/09_29_16-36/09_29_16-36_vit_1.pth.tar'  
 
 state = torch.load(path)#['state_dict']
 if 'state_dict' in state:
@@ -74,8 +74,8 @@ encoder.eval()
 
 
 N_CLASS = 2
-miou_calculator = torchmetrics.JaccardIndex(2)
-cf_mat_calculator = torchmetrics.ConfusionMatrix(2)
+miou_calculator = torchmetrics.JaccardIndex(num_classes = 2, task = 'multiclass')
+cf_mat_calculator = torchmetrics.ConfusionMatrix(num_classes = 2, task = 'multiclass')
 cf_mat = torch.zeros(2,2)
 preds = []
 targets = []
@@ -103,8 +103,8 @@ def miou(preds,targets,cf_mat=None,count=None):
     return {"miou":r,"acc":acc}
 
 N_SAMPLES = 500
-n_len = range(len(dataset))
-samples = np.random.choice(n_len,N_SAMPLES,replace=False)
+n_len = len(dataset)
+samples = np.random.choice(n_len, N_SAMPLES, replace=False)
 data_loader = DataLoader(dataset=dataset,shuffle=True,batch_size=1)
 encoder.to('cuda:0')
 idx = 0

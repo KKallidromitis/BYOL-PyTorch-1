@@ -97,7 +97,7 @@ class SSLMaskDataset(VisionDataset):
                 raise NotImplementedError()
             
             if subset == "imagenet1p":
-                with open('1percent.txt') as f:
+                with open('/home/acf15772rb/r2o-vit/1percent.txt') as f:
                     samples = f.readlines()
                     samples = [x.replace('\n','').strip() for x in samples ]
                     samples = [x for x in samples if x]
@@ -131,7 +131,7 @@ class SSLMaskDataset(VisionDataset):
         
         # Load Mask
         if self.mask_file_path is None:
-            mask = torch.from_numpy(np.zeros(sample.size, dtype=np.bool))
+            mask = torch.from_numpy(np.zeros(sample.size, dtype=bool))
         else:
             mask_file_name = self.img_to_mask[index].split('/')[-1]
             mask_file_path = os.path.join(self.mask_file_path,mask_file_name)

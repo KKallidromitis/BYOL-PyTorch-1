@@ -11,9 +11,9 @@ import PIL.Image as InterpolationMode
 
 class CUBDataset(Dataset):
 
-    def __init__(self,image_root,anno_root,split_file='/shared/jacklishufan/CUB/train_val_test_split.txt',
-    image_file='/shared/jacklishufan/CUB/CUB_200_2011/images.txt',
-    split='test'
+    def __init__(self,image_root,anno_root,split_file='/projects/d001/gce50852/nishio/CUB_200_2011/train_test_split.txt',
+    image_file='/projects/d001/gce50852/nishio/CUB_200_2011/images.txt',
+    split=''
     ) -> None:
         super().__init__()
         self.transform = Compose([
@@ -48,7 +48,7 @@ class CUBDataset(Dataset):
             with open(split_file) as f:
                 splits = f.readlines()
             test = []
-            with open('/shared/jacklishufan/CUB/CUB_200_2011/images.txt') as f:
+            with open('/projects/d001/gce50852/nishio/CUB_200_2011/images.txt') as f:
                 all_files = f.readlines()
             all_files = list(os.path.join(x.replace('\n','').split(' ')[1]) for x in all_files if x)
             for r,f in zip(splits,all_files):
@@ -64,7 +64,7 @@ class CUBDataset(Dataset):
 
     def __getitem__(self, index):
         img_path = os.path.join(self.image_root,self.files[index])
-        anno_path = os.path.join(self.anno_root,self.files[index].replace('jpg','png'))
+        anno_path = os.path.join(self.anno_root,self.files[index])# .replace('jpg','png'))
         image = Image.open(img_path).convert('RGB')
         label = cv2.imread(anno_path, cv2.IMREAD_GRAYSCALE)
         return self.transform(image),self.transform_label(label)

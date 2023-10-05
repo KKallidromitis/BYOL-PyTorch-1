@@ -9,7 +9,7 @@ from utils import logging_util, distributed_utils
 import argparse
 
 parser = argparse.ArgumentParser(description='Detcon-BYOL Training')
-parser.add_argument("--local_rank", metavar="Local Rank", type=int, default=0, 
+parser.add_argument("--local-rank", metavar="Local Rank", type=int, default=0, 
                     help="Torch distributed will automatically pass local argument")
 parser.add_argument("--cfg", metavar="Config Filename", default="train_imagenet_300", 
                     help="Experiment to run. Default is Imagenet 300 epochs")

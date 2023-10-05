@@ -86,7 +86,8 @@ class BYOLTrainer():
         self.log_all = self.config['log']['log_all']
         self.cross_entrophy_loss = torch.nn.CrossEntropyLoss()
         if self.gpu==0 or self.log_all:
-            wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
+            # wandb.init(project="detcon_byol",name = save_dir+'_gpu_'+str(self.rank))
+            pass
         
         try:
             os.makedirs(save_dir)
@@ -296,22 +297,22 @@ class BYOLTrainer():
             if (self.gpu == 0 or self.log_all) and self.steps % self.log_step == 0:
                 
                 # Log per batch stats to wandb (average per epoch is also logged at the end of function)
-                wandb.log({
-                    'lr': round(self.optimizer.param_groups[0]["lr"], 5),
-                    'mm': round(self.mm, 5),
-                    'loss': round(loss_meter.val, 5),
-                    "eh_obj":round(eh_obj.item(),5),
-                    "eh_dist":round(eh_dist.item(),5),
-                    "inv_loss":round(inv_loss.item(),5),
-                    "mask_loss":round(mask_loss.item(),5),
-                    "num_segs":round(num_segs.item(),5),
-                    'Batch Time': round(batch_time.val, 5),
-                    'Data Time': round(data_time.val, 5),
-                    "K-clustering":clustering_k,
-                    "num_indicator":round(num_indicator.item(),5),
-                    'Forward Time': round(forward_time.val, 5),
-                    'Backward Time': round(backward_time.val, 5),
-                })
+                # wandb.log({
+                #     'lr': round(self.optimizer.param_groups[0]["lr"], 5),
+                #     'mm': round(self.mm, 5),
+                #     'loss': round(loss_meter.val, 5),
+                #     "eh_obj":round(eh_obj.item(),5),
+                #     "eh_dist":round(eh_dist.item(),5),
+                #     "inv_loss":round(inv_loss.item(),5),
+                #     "mask_loss":round(mask_loss.item(),5),
+                #     "num_segs":round(num_segs.item(),5),
+                #     'Batch Time': round(batch_time.val, 5),
+                #     'Data Time': round(data_time.val, 5),
+                #     "K-clustering":clustering_k,
+                #     "num_indicator":round(num_indicator.item(),5),
+                #     'Forward Time': round(forward_time.val, 5),
+                #     'Backward Time': round(backward_time.val, 5),
+                # })
                 if  (self.steps//self.log_step) % 5 == 1:
                     # img_mask = mask_target[0].detach().cpu()
                     # applied_mask = applied_mask[0].detach().cpu()
@@ -328,7 +329,7 @@ class BYOLTrainer():
                     mh,mw,mc = mask_visual.shape
                     # mask_visual = mask_visual.view(mh*mw,mc)
                     # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
-                    wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
+                    # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
@@ -344,11 +345,12 @@ class BYOLTrainer():
             images, masks,diff_transfrom = prefetcher.next()
         if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
-            wandb.log({
-                'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
-                'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
-                'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
-                'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
-                'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
-            })
+            # wandb.log({
+            #     'Average Loss (Per-Epoch)': round(loss_meter.avg, 5),
+            #     'Average Batch-Time (Per-Epoch)': round(batch_time.avg, 5),
+            #     'Average Data-Time (Per-Epoch)': round(data_time.avg, 5),
+            #     'Average Forward-Time (Per-Epoch)': round(forward_time.avg, 5),
+            #     'Average Backward-Time (Per Epoch)': round(backward_time.avg, 5),
+            # })
+            pass
 

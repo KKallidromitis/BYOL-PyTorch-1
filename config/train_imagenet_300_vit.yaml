@@ -41,11 +41,11 @@ amp:
   opt_level: "O0"
 
 data:
-  image_dir: "./imagenet" #TODO: Change to match Japan Cluster
+  image_dir: "/projects/d001/gce50852/kos/data/imagenet" #TODO: Change to match Japan Cluster
   subset: "imagenet1p" #Set to imagenet100 for imagenet100 or imagenet1p for 1p. "" = full imagenet
   mask_type: ""
   resize_size: 224 # src: 3.1
-  data_workers: 8
+  data_workers: 1
   overlap_indicator: false 
   weight: true
   n_kmeans: 9999
@@ -73,8 +73,8 @@ loss: #src: 3.1
 checkpoint:
   time_stamp:
   resume_path: 
-  save_epoch: 50
-  ckpt_path: "ckpt/detconb/{}/{}_{}_{}.pth.tar"
+  save_epoch: 1
+  ckpt_path: "r2o-vit/ckpt/{}/{}_{}_{}.pth.tar"
 
 log:
   log_step: 10
