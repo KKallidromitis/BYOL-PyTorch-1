@@ -172,7 +172,29 @@ class VitWrapper(nn.Module):
         n,c,hw = feat.shape
         return feat.reshape(n,c,self.dim,self.dim) # B X C X H X W
 
-class EncoderwithProjection(nn.Module):
+class Projector(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # projection
+        input_dim = config['model']['projection']['input_dim']
+        hidden_dim = config['model']['projection']['hidden_dim']
+        output_dim = config['model']['projection']['output_dim']
+        self.projector = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
+        
+    def forward(self, x, masks, mask_ids, mnet=None):
+        ## Passed in mask, direct pooling
+        bs, emb, emb_x, emb_y  = x.shape
+        x = x.permute(0,2,3,1) # (B,7,7,2048)
+
+        masks_area = masks.sum(axis=-1, keepdims=True)
+        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
+        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
+        x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
+        
+        x = self.projector(x)
+        return x, mask_ids
+
+class Encoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         # backbone
@@ -185,37 +207,9 @@ class EncoderwithProjection(nn.Module):
             base_encoder = models.__dict__[net_name](pretrained=pretrained)
             self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
 
-        # projection
-        input_dim = config['model']['projection']['input_dim']
-        hidden_dim = config['model']['projection']['hidden_dim']
-        output_dim = config['model']['projection']['output_dim']
-        self.projetion = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
-        
-    def forward(self, x, masks,mask_ids, mnet=None):
-        #import ipdb;ipdb.set_trace()
-        #breakpoint()
+    def forward(self, x, mnet=None):
         x = self.encoder(x) #(B, 2048, 7, 7)
-        #breakpoint()
-        # Detcon mask multiply
-        # if mnet!= None:
-        #     masks = torch.reshape(mnet(x),(-1, 16, 49))
-
-        ## Passed in mask, direct pooling
-        bs, emb, emb_x, emb_y  = x.shape
-        x = x.permute(0,2,3,1) # (B,7,7,2048)
-
-        #breakpoint()
-        masks_area = masks.sum(axis=-1, keepdims=True)
-        smpl_masks = masks / torch.maximum(masks_area, torch.ones_like(masks_area))
-        #smpl_masks = torch.ones((bs,1,49))
-        #Overwreite with standard BYOL
-        #breakpoint()
-        embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
-        #breakpoint()
-        x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
-        
-        x = self.projetion(x)
-        return x, mask_ids
+        return x
 
 class Predictor(nn.Module):
     def __init__(self, config):
@@ -227,9 +221,26 @@ class Predictor(nn.Module):
         output_dim = config['model']['predictor']['output_dim']
         self.predictor = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)
 
-    def forward(self, x, mask_ids):
-        return self.predictor(x), mask_ids
+    def forward(self, x):
+        return self.predictor(x)
 
+class Decoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # decode
+        input_dim = config['model']['decoder']['input_dim']
+        output_dim = config['model']['decoder']['output_dim']
+        self.l1 = nn.Linear(input_dim, output_dim)
+        self.bn1 = nn.BatchNorm1d(output_dim)
+        self.relu1 = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.l1(x)
+        batch_size, n_channal, n_emb = x.shape # B * 2048 * f
+        x = self.bn1(x.reshape(batch_size*n_channal, n_emb))
+        x = x.reshape(batch_size, n_channal, n_emb)
+        x = self.relu1(x)
+        return x
 
 class FCNMaskNetV2(nn.Module):
     '''
