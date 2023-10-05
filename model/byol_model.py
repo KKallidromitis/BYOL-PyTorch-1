@@ -161,7 +161,7 @@ class PredR2O(torch.nn.Module):
         #     else:
         #         self.kmeans = None
         # Get spanning view embeddings
-        with torch.no_grad():
+        # with torch.no_grad():
             # if self.n_kmeans < 9999:
             #     converted_idx_b,converted_idx = self.do_kmeans(raw_image,slic_mask,user_masknet) # B X C X 56 X 56, B X 56 X 56
             # else:
@@ -176,14 +176,17 @@ class PredR2O(torch.nn.Module):
             # rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
             # flip_1 = roi_t[:,0,4]
             # flip_2 = roi_t[:,1,4]
+            # aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
+            # aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b, rois_2, self.feature_resolution), flip_2) # mask output is B X 16 X 7 X 7
 
-            aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
-            aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b, rois_2, self.feature_resolution), flip_2) # mask output is B X 16 X 7 X 7
-            mask_b, mask_c, h, w = aligned_1.shape
-            aligned_1 = aligned_1.reshape(mask_b, mask_c, h*w).detach()
-            aligned_2 = aligned_2.reshape(mask_b, mask_c, h*w).detach()
+        aligned = self.deocder(previous_z)
+        aligned = aligned / aligned.sum(dim = 1)
+        mask_b, mask_c, mask_s = aligned.shape
+        aligned = aligned.reshape(mask_b, mask_c, mask_s)
+        aligned_1 = aligned[mask_b//2: , :, :]
+        aligned_2 = aligned[0:mask_b//2, :, :]
+
         # If this is on, only mask in intersetved area will be calculated
-        
         # if self.over_lap_mask:
         #     intersection = input_masks.float()
         #     intersec_masks_1 = F.adaptive_avg_pool2d(intersection[:,0,...],(h,w)).repeat(1,mask_c,1,1).reshape(mask_b,mask_c,h*w)

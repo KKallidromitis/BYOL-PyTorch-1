@@ -191,7 +191,7 @@ class Projector(nn.Module):
         embedding_local = torch.reshape(x,[bs, emb_x*emb_y, emb])
         x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
-        x = self.projector(x)
+        x = self.projector(x) # (B, C, 256)
         return x, mask_ids
 
 class Encoder(nn.Module):
@@ -236,8 +236,8 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         x = self.l1(x)
-        batch_size, n_channal, n_emb = x.shape # B * 2048 * f
-        x = self.bn1(x.reshape(batch_size*n_channal, n_emb))
+        batch_size, n_channal, n_emb = x.shape # B x C x 49
+        x = self.bn1(x.reshape(batch_size*n_channal, n_emb)) # is this batch-normalization correctly used?
         x = x.reshape(batch_size, n_channal, n_emb)
         x = self.relu1(x)
         return x
