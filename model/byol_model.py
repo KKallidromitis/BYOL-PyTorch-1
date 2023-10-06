@@ -59,17 +59,18 @@ class PredR2O(torch.nn.Module):
     def generate_init_mask(self, batch_size, radius_rate = 0.5):
         mask_size = config['model']['decoder']['output_dim']
         h = w = np.sqrt(mask_size)
-        r = h/2*radius_rate
+        r = np.amax(np.array([h/2*radius_rate, 0.5]))
         k = np.arange(mask_size)
         i, j = k//w, k%w
         d = (i - (h - 1)/2)**2 + (j - (w - 1)/2)**2
         mask_c1 = np.exp(-d*np.log(2)/r**2)
-        mask_c2 = 1 - mask_c1
+        mask_c2 = 1.0 - mask_c1
         mask = np.vstack([mask_c2, mask_c1])
         mask = np.repeat(mask[np.newaxis, :, :], batch_size*2, axis = 0)
         return torch.from_numpy(mask)
 
-    def forward(self, view1, view2, mm, pre_target_z=None):
+    def forward(self, view1, view2, mm, pre_enc_q=None, pre_target_enc_z=None, pre_target_z=None):
+        if pre_target_z is None:
         im_size = view1.shape[-1]
         batch_size = view1.shape[0]
         assert im_size == 224
@@ -77,29 +78,32 @@ class PredR2O(torch.nn.Module):
         if pre_target_z is None:
             mask_raw = self.generate_init_mask(batch_size)
         else:
-            mask_raw = self.decoder(pre_target_z) ##nishio## is it neccesary to regularize the output by sigmoid function?
+            mask_raw = self.decoder(pre_target_z)
         mask_b, mask_c, mask_s = mask_raw.shape
+        mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
         sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
-        # mask[sum_mask == 0] = 1.0
-        # sum_mask[sum_mask == 0] = mask_c
-        mask_raw = mask_raw / sum_mask_raw ##nishio## how to handle division by zero
+        mask_raw = mask_raw / sum_mask_raw
         ##nisho## how to crop the mask_raw to generate mask_1, 2
         mask_1 = mask_raw[mask_b//2: , :, :]
         mask_2 = mask_raw[0:mask_b//2, :, :]
 
-        mask_ids = None
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
-        online_enc_q = self.online_encoder(torch.cat([view1, view2])) ##nishio## Should the list be unpacked by '*'?
-        q, pinds = self.projector(online_enc_q, masks.to('cuda'), mask_ids)
+        if pre_enc_q is None:
+            enc_q = self.online_encoder(torch.cat([view1, view2])) ##nishio## Should the list be unpacked by '*'?
+        else:
+            enc_q = pre_enc_q.detach()
+        q = self.projector(enc_q, masks.to('cuda'))
         q = self.predictor(q)
 
         # target network forward
         with torch.no_grad():
             self._update_target_network(mm)
-            target_enc_z = self.target_encoder(torch.cat([view2, view1]))
-            target_z, tinds = self.target_projector(target_enc_z, masks_inv.to('cuda'), mask_ids)
-            target_z = target_z.detach().clone()
-        
+            if pre_target_enc_z is None:
+                target_enc_z = self.target_encoder(torch.cat([view2, view1]))
+            else:
+                target_enc_z = pre_target_enc_z.detach()
+            target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
+            # target_z = target_z.detach().clone() ##nishio## Is this unneccesary? 
 
-        return q, target_z, pinds, tinds, masks
+        return q, enc_q, target_z, target_enc_z, masks #, mask_raw, mask_1, mask_2

@@ -181,7 +181,7 @@ class Projector(nn.Module):
         output_dim = config['model']['projection']['output_dim']
         self.projector = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim)        
         
-    def forward(self, x, masks, mask_ids, mnet=None):
+    def forward(self, x, masks):
         ## Passed in mask, direct pooling
         bs, emb, emb_x, emb_y  = x.shape
         x = x.permute(0,2,3,1) # (B,7,7,2048)
@@ -192,7 +192,7 @@ class Projector(nn.Module):
         x = torch.matmul(smpl_masks.float().to('cuda'), embedding_local)
         
         x = self.projector(x) # (B, C, 256)
-        return x, mask_ids
+        return x
 
 class Encoder(nn.Module):
     def __init__(self, config):
@@ -207,7 +207,7 @@ class Encoder(nn.Module):
             base_encoder = models.__dict__[net_name](pretrained=pretrained)
             self.encoder = nn.Sequential(*list(base_encoder.children())[:-2])
 
-    def forward(self, x, mnet=None):
+    def forward(self, x):
         x = self.encoder(x) #(B, 2048, 7, 7)
         return x
 
@@ -232,14 +232,14 @@ class Decoder(nn.Module):
         output_dim = config['model']['decoder']['output_dim']
         self.l1 = nn.Linear(input_dim, output_dim)
         self.bn1 = nn.BatchNorm1d(output_dim)
-        self.relu1 = nn.ReLU(inplace=True)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         x = self.l1(x)
-        batch_size, n_channal, n_emb = x.shape # B x C x 49
-        x = self.bn1(x.reshape(batch_size*n_channal, n_emb)) # is this batch-normalization correctly used?
-        x = x.reshape(batch_size, n_channal, n_emb)
-        x = self.relu1(x)
+        batch_size, n_channel, n_emb = x.shape # B x C x 49
+        x = self.bn1(x.reshape(batch_size*n_channel, n_emb))
+        x = x.reshape(batch_size, n_channel, n_emb)
+        x = self.sigmoid(x)
         return x
 
 class FCNMaskNetV2(nn.Module):

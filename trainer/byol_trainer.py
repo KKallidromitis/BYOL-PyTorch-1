@@ -265,7 +265,7 @@ class BYOLTrainer():
             # forward
             tflag = time.time()
             #breakpoint()
-            q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
+            q, enc_q, target_z, target_enc_z, down_sampled_masks,raw_mask, mask_target, applied_mask = self.model(view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,
             clustering_k=clustering_k)
             forward_time.update(time.time() - tflag)
 
