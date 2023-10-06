@@ -179,10 +179,12 @@ class PredR2O(torch.nn.Module):
             # aligned_1 = self.handle_flip(ops.roi_align(converted_idx_b, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
             # aligned_2 = self.handle_flip(ops.roi_align(converted_idx_b, rois_2, self.feature_resolution), flip_2) # mask output is B X 16 X 7 X 7
 
-        aligned = self.deocder(previous_z)
-        aligned = aligned / aligned.sum(dim = 1)
+        aligned = self.decoder(previous_z)
         mask_b, mask_c, mask_s = aligned.shape
-        aligned = aligned.reshape(mask_b, mask_c, mask_s)
+        sum_aligned = aligned.sum(dim = 1, keepdim = True)
+        # aligned[sum_aligned == 0] = 1.0
+        # sum_aligned[sum_aligned == 0] = mask_c
+        aligned = aligned / sum_aligned # how to manage division by zero
         aligned_1 = aligned[mask_b//2: , :, :]
         aligned_2 = aligned[0:mask_b//2, :, :]
 

@@ -41,7 +41,6 @@ class BYOLTrainer():
         self.warmup_epochs = self.config['optimizer']['warmup_epochs']
         self.overlap_indicator = self.config['data']['overlap_indicator']
         self.use_weight = self.config['data']['weight']
-        
 
         self.train_batch_size = self.config['data']['train_batch_size']
         self.val_batch_size = self.config['data']['val_batch_size']
@@ -319,7 +318,6 @@ class BYOLTrainer():
 
                     # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
-
 
                     img_mask = mask_target[0].detach().cpu()
                     applied_mask = applied_mask[0].detach().cpu()
