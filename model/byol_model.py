@@ -84,6 +84,12 @@ class PredR2O(torch.nn.Module):
         return torch.from_numpy(mask)
 
     def form_mask(self, mask_raw, roi_t)
+        # regularize the sum of the masks to 1 in the cluster direction
+        mask_b, mask_c, mask_s = mask_raw.shape
+        mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
+        sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
+        mask_raw = mask_raw / sum_mask_raw
+
         #TODO: Move this to config, mask size before downsample
         mask_dim = 28
         #TODO: Move this to a separate method just as in selective search branch
@@ -94,14 +100,7 @@ class PredR2O(torch.nn.Module):
         aligned_1 = self.handle_flip(ops.roi_align(mask_raw, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
         aligned_2 = self.handle_flip(ops.roi_align(mask_raw, rois_2, self.feature_resolution), flip_2) # mask output is B X 16 X 7 X 7
 
-        mask_b, mask_c, mask_s = mask_raw.shape
-        mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
-        sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
-        mask_raw = mask_raw / sum_mask_raw
-        ##nishio## how to crop the mask_raw to generate mask_1, 2
-        mask_1 = mask_raw[mask_b//2: , :, :]
-        mask_2 = mask_raw[0:mask_b//2, :, :]
-        return mask_1, mask_2
+        return aligned_1, aligned_2, mask_raw
 
     def forward(self, view1, view2, mm, roi_t, pre_enc_q=None, pre_target_enc_z=None, pre_target_z=None):
         im_size = view1.shape[-1]
@@ -112,7 +111,7 @@ class PredR2O(torch.nn.Module):
             mask_raw = self.generate_init_mask(batch_size)
         else:
             mask_raw = self.decoder(pre_target_z)
-        mask_1, mask_2 = self.form_mask(mask_raw, roi_t)
+        mask_1, mask_2, mask_raw = self.form_mask(mask_raw, roi_t)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
 
@@ -134,5 +133,5 @@ class PredR2O(torch.nn.Module):
             target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
             # target_z = target_z.detach().clone() ##nishio## Is this necessary? 
 
-        return q, enc_q, target_z, target_enc_z, masks #, mask_raw, mask_1, mask_2
+        return q, enc_q, target_z, target_enc_z, masks, mask_raw #, mask_1, mask_2
         # return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
