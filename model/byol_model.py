@@ -92,7 +92,6 @@ class PredR2O(torch.nn.Module):
 
         #TODO: Move this to config, mask size before downsample
         mask_dim = 28
-        #TODO: Move this to a separate method just as in selective search branch
         rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
         rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
         flip_1 = roi_t[:,0,4]

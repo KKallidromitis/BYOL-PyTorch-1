@@ -262,28 +262,33 @@ class BYOLTrainer():
             # measure data loading time
             data_time.update(time.time() - end)
             #breakpoint()
-            # forward
-            tflag = time.time()
-            #breakpoint()
-            q, enc_q, target_z, target_enc_z, down_sampled_masks, raw_mask = self.model(
-            # q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(
-                view1, view2, self.mm, diff_transfrom, pre_enc_q, pre_target_enc_z, pre_target_z
-                # view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,clustering_k=clustering_k
-            )
-            forward_time.update(time.time() - tflag)
 
-            tflag = time.time()
-            loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q, target_z, down_sampled_masks)
+            for i in range(5): # one encoder-loop and four decoder-loop
+                # forward
+                tflag = time.time()
+                #breakpoint()
+                q, enc_q, target_z, target_enc_z, down_sampled_masks, raw_mask = self.model(
+                # q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(
+                    view1, view2, self.mm, diff_transfrom, pre_enc_q, pre_target_enc_z, pre_target_z
+                    # view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,clustering_k=clustering_k
+                )
+                pre_enc_q = enc_q
+                pre_target_enc_z = target_enc_z
+                pre_target_z = target_z
+                forward_time.update(time.time() - tflag)
 
-            self.optimizer.zero_grad()
-            if self.opt_level == 'O0':
-                loss.backward()
-            else:
-                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            self.optimizer.step()
-            backward_time.update(time.time() - tflag)
-            loss_meter.update(loss.item(), view1.size(0))
+                tflag = time.time()
+                loss,eh_obj,eh_dist,inv_loss,mask_loss,num_indicator = self.forward_loss(q, target_z, down_sampled_masks)
+
+                self.optimizer.zero_grad()
+                if self.opt_level == 'O0':
+                    loss.backward()
+                else:
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                self.optimizer.step()
+                backward_time.update(time.time() - tflag)
+                loss_meter.update(loss.item(), view1.size(0))
 
             tflag = time.time()
             if self.steps % self.log_step == 0 and self.rank == 0:
