@@ -13,7 +13,7 @@ from utils.distributed_utils import gather_from_all
 from torch.utils.data import DataLoader
 import numpy as np
 
-class PredR2O(torch.nn.Module):
+class BYOLModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
 
@@ -36,6 +36,7 @@ class PredR2O(torch.nn.Module):
         # self.over_lap_mask = config['data'].get('over_lap_mask',True)
         self._initializes_target_network()
         self.feature_resolution =  config['model']['backbone']['feature_resolution']
+        self.mask_size = config['model']['decoder']['output_dim']
         # self.rank = config['rank']
         # self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         # self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
@@ -44,7 +45,7 @@ class PredR2O(torch.nn.Module):
     def _initializes_target_network(self):
         networks = [[self.online_encoder, self.target_encoder], [self.online_projector, self.target_projector]]
         for online_network, target_network in networks:
-            for param_q, param_k in zip(online_network.parmeters(), target_network.parameters()):
+            for param_q, param_k in zip(online_network.parameters(), target_network.parameters()):
                 param_k.data.copy_(param_q.data)  # initialize
                 param_k.requires_grad = False     # not update by gradient
 
@@ -71,10 +72,9 @@ class PredR2O(torch.nn.Module):
         return out
 
     def generate_init_mask(self, batch_size, radius_rate = 0.5):
-        mask_size = config['model']['decoder']['output_dim']
-        h = w = np.sqrt(mask_size)
+        h = w = np.sqrt(self.mask_size)
         r = np.amax(np.array([h/2*radius_rate, 0.5]))
-        k = np.arange(mask_size)
+        k = np.arange(self.mask_size)
         i, j = k//w, k%w
         d = (i - (h - 1)/2)**2 + (j - (w - 1)/2)**2
         mask_c1 = np.exp(-d*np.log(2)/r**2)
@@ -83,7 +83,7 @@ class PredR2O(torch.nn.Module):
         mask = np.repeat(mask[np.newaxis, :, :], batch_size, axis = 0)
         return torch.from_numpy(mask)
 
-    def form_mask(self, mask_raw, roi_t)
+    def form_mask(self, mask_raw, roi_t, idx):
         # regularize the sum of the masks to 1 in the cluster direction
         mask_b, mask_c, mask_s = mask_raw.shape
         mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
@@ -92,8 +92,9 @@ class PredR2O(torch.nn.Module):
 
         #TODO: Move this to config, mask size before downsample
         mask_dim = 28
-        rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
-        rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+        rois_1 = torch.empty(())
+        rois_1 = torch.stack([roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])])  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
+        rois_2 = torch.stack([roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])])
         flip_1 = roi_t[:,0,4]
         flip_2 = roi_t[:,1,4]
         aligned_1 = self.handle_flip(ops.roi_align(mask_raw, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
@@ -105,12 +106,13 @@ class PredR2O(torch.nn.Module):
         im_size = view1.shape[-1]
         batch_size = view1.shape[0]
         assert im_size == 224
+        idx = torch.LongTensor([1,0,3,2]).cuda()
 
         if pre_target_z is None:
             mask_raw = self.generate_init_mask(batch_size)
         else:
             mask_raw = self.decoder(pre_target_z)
-        mask_1, mask_2, mask_raw = self.form_mask(mask_raw, roi_t)
+        mask_1, mask_2, mask_raw = self.form_mask(mask_raw.to('cuda'), roi_t, idx)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
 

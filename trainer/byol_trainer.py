@@ -129,7 +129,7 @@ class BYOLTrainer():
         momentum = self.config['optimizer']['momentum']
         weight_decay = self.config['optimizer']['weight_decay']
         exclude_bias_and_bn = self.config['optimizer']['exclude_bias_and_bn']
-        parms = [self.model.online_network, self.model.predictor]
+        parms = [self.model.online_encoder, self.model.online_projector, self.model.predictor, self.model.decoder]
         if self.config['model']['masknet']:
             parms.append(self.model.masknet)
         params = params_util.collect_params(parms,exclude_bias_and_bn=exclude_bias_and_bn)
@@ -263,6 +263,9 @@ class BYOLTrainer():
             data_time.update(time.time() - end)
             #breakpoint()
 
+            pre_enc_q = None
+            pre_target_enc_z = None
+            pre_target_z = None
             for i in range(5): # one encoder-loop and four decoder-loop
                 # forward
                 tflag = time.time()
