@@ -35,7 +35,7 @@ class PredR2O(torch.nn.Module):
         self.predictor = Predictor(config)
         # self.over_lap_mask = config['data'].get('over_lap_mask',True)
         self._initializes_target_network()
-        # self.feature_resolution =  config['model']['backbone']['feature_resolution']
+        self.feature_resolution =  config['model']['backbone']['feature_resolution']
         # self.rank = config['rank']
         # self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         # self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
@@ -56,6 +56,20 @@ class PredR2O(torch.nn.Module):
             for param_q, param_k in zip(online_network.parameters(), target_network.parameters()):
                 param_k.data.mul_(mm).add_(1. - mm, param_q.data)
 
+    def handle_flip(self, aligned_mask, flip):
+        '''
+        aligned_mask: B X C X 7 X 7
+        flip: B 
+        '''
+        _,c,h,w = aligned_mask.shape
+        b = len(flip)
+        #breakpoint()
+        flip = flip.repeat(c*h*w).reshape(c,h,w,b) # C X H X W X B
+        flip = flip.permute(3,0,1,2)
+        flipped = aligned_mask.flip(-1)
+        out = torch.where(flip==1,flipped,aligned_mask)
+        return out
+
     def generate_init_mask(self, batch_size, radius_rate = 0.5):
         mask_size = config['model']['decoder']['output_dim']
         h = w = np.sqrt(mask_size)
@@ -66,11 +80,30 @@ class PredR2O(torch.nn.Module):
         mask_c1 = np.exp(-d*np.log(2)/r**2)
         mask_c2 = 1.0 - mask_c1
         mask = np.vstack([mask_c2, mask_c1])
-        mask = np.repeat(mask[np.newaxis, :, :], batch_size*2, axis = 0)
+        mask = np.repeat(mask[np.newaxis, :, :], batch_size, axis = 0)
         return torch.from_numpy(mask)
 
-    def forward(self, view1, view2, mm, pre_enc_q=None, pre_target_enc_z=None, pre_target_z=None):
-        if pre_target_z is None:
+    def form_mask(self, mask_raw, roi_t)
+        #TODO: Move this to config, mask size before downsample
+        mask_dim = 28
+        #TODO: Move this to a separate method just as in selective search branch
+        rois_1 = [roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
+        rois_2 = [roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])]
+        flip_1 = roi_t[:,0,4]
+        flip_2 = roi_t[:,1,4]
+        aligned_1 = self.handle_flip(ops.roi_align(mask_raw, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
+        aligned_2 = self.handle_flip(ops.roi_align(mask_raw, rois_2, self.feature_resolution), flip_2) # mask output is B X 16 X 7 X 7
+
+        mask_b, mask_c, mask_s = mask_raw.shape
+        mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
+        sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
+        mask_raw = mask_raw / sum_mask_raw
+        ##nishio## how to crop the mask_raw to generate mask_1, 2
+        mask_1 = mask_raw[mask_b//2: , :, :]
+        mask_2 = mask_raw[0:mask_b//2, :, :]
+        return mask_1, mask_2
+
+    def forward(self, view1, view2, mm, roi_t, pre_enc_q=None, pre_target_enc_z=None, pre_target_z=None):
         im_size = view1.shape[-1]
         batch_size = view1.shape[0]
         assert im_size == 224
@@ -79,16 +112,11 @@ class PredR2O(torch.nn.Module):
             mask_raw = self.generate_init_mask(batch_size)
         else:
             mask_raw = self.decoder(pre_target_z)
-        mask_b, mask_c, mask_s = mask_raw.shape
-        mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
-        sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
-        mask_raw = mask_raw / sum_mask_raw
-        ##nishio## how to crop the mask_raw to generate mask_1, 2
-        mask_1 = mask_raw[mask_b//2: , :, :]
-        mask_2 = mask_raw[0:mask_b//2, :, :]
-
+        mask_1, mask_2 = self.form_mask(mask_raw, roi_t)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
+
+        # online network forward
         if pre_enc_q is None:
             enc_q = self.online_encoder(torch.cat([view1, view2]))
         else:

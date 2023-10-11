@@ -18,7 +18,7 @@ model:
   decoder:
     type: "FCN"
     input_dim: 256
-    output_dim: 196  # 14 x 14
+    output_dim: 784  # mask_dim**2: 28x28 or 14x14
 
 clustering:
   scheduler:
