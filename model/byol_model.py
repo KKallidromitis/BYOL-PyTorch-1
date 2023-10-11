@@ -83,14 +83,14 @@ class PredR2O(torch.nn.Module):
         mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
         sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
         mask_raw = mask_raw / sum_mask_raw
-        ##nisho## how to crop the mask_raw to generate mask_1, 2
+        ##nishio## how to crop the mask_raw to generate mask_1, 2
         mask_1 = mask_raw[mask_b//2: , :, :]
         mask_2 = mask_raw[0:mask_b//2, :, :]
 
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
         if pre_enc_q is None:
-            enc_q = self.online_encoder(torch.cat([view1, view2])) ##nishio## Should the list be unpacked by '*'?
+            enc_q = self.online_encoder(torch.cat([view1, view2]))
         else:
             enc_q = pre_enc_q.detach()
         q = self.projector(enc_q, masks.to('cuda'))
@@ -104,6 +104,7 @@ class PredR2O(torch.nn.Module):
             else:
                 target_enc_z = pre_target_enc_z.detach()
             target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
-            # target_z = target_z.detach().clone() ##nishio## Is this unneccesary? 
+            # target_z = target_z.detach().clone() ##nishio## Is this necessary? 
 
         return q, enc_q, target_z, target_enc_z, masks #, mask_raw, mask_1, mask_2
+        # return q, target_z, pinds, tinds,masks,raw_masks,raw_mask_target,num_segs,converted_idx
