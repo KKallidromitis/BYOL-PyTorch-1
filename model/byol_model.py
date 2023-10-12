@@ -77,24 +77,29 @@ class BYOLModel(torch.nn.Module):
         k = np.arange(self.mask_size)
         i, j = k//w, k%w
         d = (i - (h - 1)/2)**2 + (j - (w - 1)/2)**2
-        mask_c1 = np.exp(-d*np.log(2)/r**2)
+        mask_c1 = np.exp(-d*np.log(2)/r**2, dtype=np.float32)
         mask_c2 = 1.0 - mask_c1
         mask = np.vstack([mask_c2, mask_c1])
         mask = np.repeat(mask[np.newaxis, :, :], batch_size, axis = 0)
-        return torch.from_numpy(mask)
+        mask = mask.reshape(batch_size, 2, h.astype(np.int32), w.astype(np.int32))
+        return torch.from_numpy(mask) # B x C x H x W
 
     def form_mask(self, mask_raw, roi_t, idx):
         # regularize the sum of the masks to 1 in the cluster direction
-        mask_b, mask_c, mask_s = mask_raw.shape
         mask_raw += 1.0*10**(-6) # epsilon to prevent division by zero
         sum_mask_raw = mask_raw.sum(dim = 1, keepdim = True)
         mask_raw = mask_raw / sum_mask_raw
 
         #TODO: Move this to config, mask size before downsample
         mask_dim = 28
-        rois_1 = torch.empty(())
-        rois_1 = torch.stack([roi_t[j,:1,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])])  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
-        rois_2 = torch.stack([roi_t[j,1:2,:4].index_select(-1, idx)*mask_dim for j in range(roi_t.shape[0])])
+        roi_batch_size = roi_t.shape[0]
+        rois_1 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
+        rois_2 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
+        rois_1[:, 0] = torch.arange(roi_batch_size)
+        rois_2[:, 0] = torch.arange(roi_batch_size)
+        for j in range(roi_batch_size):
+            rois_1[j, 1:] = roi_t[j, :1, :4].index_select(-1, idx)*mask_dim  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
+            rois_2[j, 1:] = roi_t[j, 1:2, :4].index_select(-1, idx)*mask_dim
         flip_1 = roi_t[:,0,4]
         flip_2 = roi_t[:,1,4]
         aligned_1 = self.handle_flip(ops.roi_align(mask_raw, rois_1, self.feature_resolution), flip_1) # mask output is B X 16 X 7 X 7
