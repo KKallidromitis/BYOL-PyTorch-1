@@ -87,7 +87,7 @@ class BYOLModel(torch.nn.Module):
         # regularize the sum of the masks to 1 in the cluster direction
         mask_raw_eps = mask_raw + 1.0*10**(-6) # epsilon to prevent division by zero
         sum_mask_raw = mask_raw_eps.sum(dim = 1, keepdim = True)
-        mask_regularized = mask_raw_eps / sum_mask_raw  # B x C x H*W
+        mask_regularized = mask_raw_eps / sum_mask_raw  # 2*B x C x H*W
         mask_b, mask_c, hw = mask_regularized.shape
         h = w = np.sqrt(hw).astype(int)
         mask_regularized = mask_regularized.reshape(mask_b, mask_c, h, w) # B x C x H x W
@@ -98,8 +98,8 @@ class BYOLModel(torch.nn.Module):
             roi_batch_size = roi_t.shape[0]
             rois_1 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
             rois_2 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
-            rois_1[:, 0] = torch.arange(roi_batch_size)
-            rois_2[:, 0] = torch.arange(roi_batch_size)
+            rois_1[:, 0] = torch.arange(roi_batch_size, device='cuda')
+            rois_2[:, 0] = torch.arange(roi_batch_size, device='cuda')
             for j in range(roi_batch_size):
                 rois_1[j, 1:] = roi_t[j,  :1, :4].index_select(-1, idx)*mask_dim  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
                 rois_2[j, 1:] = roi_t[j, 1:2, :4].index_select(-1, idx)*mask_dim
@@ -119,11 +119,11 @@ class BYOLModel(torch.nn.Module):
         idx = torch.LongTensor([1,0,3,2]).cuda()
 
         if pre_target_z is None:
-            mask_init = self.generate_init_mask(batch_size)
+            mask_init = self.generate_init_mask(batch_size).detach().to('cuda')
             mask_raw = mask_init
         else:
-            mask_raw = mask_init + self.gamma*self.decoder(pre_target_z)
-        mask_1, mask_2, mask_raw = self.form_mask(mask_raw.to('cuda'), roi_t, idx)
+            mask_raw = mask_init + self.gamma*self.decoder(pre_target_z[:batch_size])
+        mask_1, mask_2, mask_raw = self.form_mask(mask_raw, roi_t, idx)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
 
@@ -131,7 +131,7 @@ class BYOLModel(torch.nn.Module):
         if pre_enc_q is None:
             enc_q = self.online_encoder(torch.cat([view1, view2]))
         else:
-            enc_q = pre_enc_q.detach()
+            enc_q = pre_enc_q.detach().clone()
         q = self.online_projector(enc_q, masks.to('cuda'))
         q = self.predictor(q)
 
@@ -141,7 +141,7 @@ class BYOLModel(torch.nn.Module):
             if pre_target_enc_z is None:
                 target_enc_z = self.target_encoder(torch.cat([view2, view1]))
             else:
-                target_enc_z = pre_target_enc_z.detach()
+                target_enc_z = pre_target_enc_z.detach().clone()
             target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
             # target_z = target_z.detach().clone() ##nishio## Is this necessary? 
 

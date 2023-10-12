@@ -217,11 +217,11 @@ class BYOLTrainer():
         if self.overlap_indicator:
             weights *= mask_exists
         weights = weights.repeat([2,1])
-        preds = F.normalize(preds, dim=-1) 
-        targets = F.normalize(targets, dim=-1) 
+        preds = F.normalize(preds, dim=-1)
+        targets = F.normalize(targets, dim=-1)
         inv_loss = ((preds-targets)**2).sum(dim=-1) * weights
         if weights.sum() == 0:
-            inv_loss = torch.FloatTensor(0.0,requires_grad=True).cuda()
+            inv_loss = torch.FloatTensor(0.0, requires_grad=True).cuda()
         else:
             inv_loss = inv_loss.sum() / weights.sum()        
     
@@ -250,7 +250,6 @@ class BYOLTrainer():
             self.adjust_learning_rate(self.steps)
             self.adjust_mm(self.steps)
             self.steps += 1
-            #import ipdb;ipdb.set_trace()
             assert images.dim() == 5, f"Input must have 5 dims, got: {images.dim()}"
             view1 = images[:, 0, ...].contiguous()
             view2 = images[:, 1, ...].contiguous()
@@ -266,13 +265,14 @@ class BYOLTrainer():
             pre_enc_q = None
             pre_target_enc_z = None
             pre_target_z = None
+            init_mask = None
             for j in range(5): # one encoder-loop and four decoder-loop
                 # forward
                 tflag = time.time()
                 #breakpoint()
-                q, enc_q, target_z, target_enc_z, down_sampled_masks, raw_mask = self.model(
+                q, enc_q, target_z, target_enc_z, down_sampled_masks, init_mask, applied_mask = self.model(
                 # q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(
-                    view1, view2, self.mm, diff_transfrom, pre_enc_q, pre_target_enc_z, pre_target_z
+                    view1, view2, init_mask, self.mm, diff_transfrom, pre_enc_q, pre_target_enc_z, pre_target_z
                     # view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,clustering_k=clustering_k
                 )
                 pre_enc_q = enc_q
@@ -323,23 +323,21 @@ class BYOLTrainer():
                     'Forward Time': round(forward_time.val, 5),
                     'Backward Time': round(backward_time.val, 5),
                 })
-                if  (self.steps//self.log_step) % 5 == 1:
+
+                if  (self.steps) % 5 == 1:
+                # if  (self.steps//self.log_step) % 5 == 1:
+                    view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
+                    applied_mask = applied_mask[0].detach().cpu()
+                    wandb_dump_img([view_raw, applied_mask], "Masks")
+
                     # img_mask = mask_target[0].detach().cpu()
                     # applied_mask = applied_mask[0].detach().cpu()
-
-                    # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
-                    # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
-
-                    # img_mask = mask_target[0].detach().cpu()
-                    # applied_mask = applied_mask[0].detach().cpu()
-
                     # view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     # mask_visual = raw_mask[0].permute(1,2,0)
                     # mh,mw,mc = mask_visual.shape
                     # mask_visual = mask_visual.view(mh*mw,mc)
                     # mask_visual = self.kmeans.fit_transform(mask_visual).view(mh,mw).detach().cpu()
                     # wandb_dump_img([view_raw,img_mask,applied_mask],"Masks")
-                    pass
 
                 printer(f'Epoch: [{epoch}][{i}/{len(self.train_loader)}]\t'
                         f'Step {self.steps}\t'
@@ -352,7 +350,8 @@ class BYOLTrainer():
                         f'Backward Time {backward_time.val:.4f} ({backward_time.avg:.4f})\t'
                         f'Log Time {log_time.val:.4f} ({log_time.avg:.4f})\t')
 
-            images, masks,diff_transfrom = prefetcher.next()
+            images, masks, diff_transfrom = prefetcher.next()
+        # import pdb; pdb.set_trace();
         if self.gpu == 0 or self.log_all: 
             # Log averages at end of Epoch
             wandb.log({
