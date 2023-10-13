@@ -36,7 +36,7 @@ class BYOLModel(torch.nn.Module):
         self._initializes_target_network()
         self.feature_resolution =  config['model']['backbone']['feature_resolution']
         self.mask_size = config['model']['decoder']['output_dim']
-        self.gamma = 0.5
+        self.gamma = 0.4
         # self.rank = config['rank']
         # self.agg = AgglomerativeClustering(affinity='cosine',linkage='average',distance_threshold=0.2,n_clusters=None)
         # self.agg_backup = AgglomerativeClustering(affinity='cosine',linkage='average',n_clusters=16)
@@ -55,7 +55,7 @@ class BYOLModel(torch.nn.Module):
         networks = [[self.online_encoder, self.target_encoder], [self.online_projector, self.target_projector]]
         for online_network, target_network in networks:
             for param_q, param_k in zip(online_network.parameters(), target_network.parameters()):
-                param_k.data.mul_(mm).add_(1. - mm, param_q.data)
+                param_k.data.mul_(mm).add_(param_q.data,  alpha=1. - mm)
 
     def handle_flip(self, aligned_mask, flip):
         '''
@@ -119,10 +119,10 @@ class BYOLModel(torch.nn.Module):
         idx = torch.LongTensor([1,0,3,2]).cuda()
 
         if pre_target_z is None:
-            mask_init = self.generate_init_mask(batch_size).detach().to('cuda')
+            mask_init = self.generate_init_mask(batch_size).detach().clone().to('cuda')
             mask_raw = mask_init
         else:
-            mask_raw = mask_init + self.gamma*self.decoder(pre_target_z[:batch_size])
+            mask_raw = (1 - self.gamma)*mask_init + self.gamma*self.decoder(pre_target_z[:batch_size])
         mask_1, mask_2, mask_raw = self.form_mask(mask_raw, roi_t, idx)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
@@ -143,7 +143,7 @@ class BYOLModel(torch.nn.Module):
             else:
                 target_enc_z = pre_target_enc_z.detach().clone()
             target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
-            # target_z = target_z.detach().clone() ##nishio## Is this necessary? 
+            target_z = target_z.detach().clone()
 
         converted_idx = torch.argmax(mask_raw, 1).detach() # B x H x W
         return q, enc_q, target_z, target_enc_z, masks, mask_init, converted_idx #, mask_1, mask_2

@@ -32,7 +32,7 @@ class ImageLoader():
             batch_size=batch_size,
             shuffle=(self.train_sampler is None and stage not in ('val', 'test')),
             num_workers=self.data_workers,
-            pin_memory=True,
+            pin_memory=False, #True,
             sampler=self.train_sampler,
             drop_last=True
         )
@@ -88,7 +88,7 @@ class ImageLoadeCOCO():
             batch_size=batch_size,
             shuffle=(self.train_sampler is None and stage not in ('val', 'test')),
             num_workers=self.data_workers,
-            pin_memory=True,
+            pin_memory=False, # True,
             sampler=self.train_sampler,
             drop_last=True
         )

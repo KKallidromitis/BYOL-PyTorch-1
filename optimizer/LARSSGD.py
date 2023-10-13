@@ -92,12 +92,15 @@ class LARS(Optimizer):
                     grad_norm = torch.norm(d_p)
                     update_norm = (grad_norm + weight_decay * weight_norm)
                     # Compute local learning rate for this layer
-                    #import ipdb;ipdb.set_trace()
+                    # import ipdb; ipdb.set_trace()
                     local_lr = torch.where(
-                        weight_norm >0,
+                        weight_norm > 0,
                         torch.where(
-                            update_norm >0, (eta * weight_norm /update_norm ), torch.tensor(1.0,dtype=torch.float32).to('cuda')
-                        ), torch.tensor(1.0,dtype=torch.float32).to('cuda')
+                            update_norm > 0,
+                            eta*weight_norm/update_norm,
+                            torch.tensor(1.0, dtype=torch.float32, device='cuda')
+                        ),
+                        torch.tensor(1.0, dtype=torch.float32, device='cuda')
                     )
                     # Legacy version: NO check for denom==0
                     # local_lr = eta * weight_norm / \

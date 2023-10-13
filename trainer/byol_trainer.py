@@ -266,7 +266,7 @@ class BYOLTrainer():
             pre_target_enc_z = None
             pre_target_z = None
             init_mask = None
-            for j in range(5): # one encoder-loop and four decoder-loop
+            for j in range(1): # once encoder loop and multiple times decoder loop
                 # forward
                 tflag = time.time()
                 #breakpoint()
@@ -324,8 +324,7 @@ class BYOLTrainer():
                     'Backward Time': round(backward_time.val, 5),
                 })
 
-                if  (self.steps) % 5 == 1:
-                # if  (self.steps//self.log_step) % 5 == 1:
+                if  (self.steps//self.log_step) % 5 == 1:
                     view_raw = np.exp(view_raw[0].permute(1,2,0).detach().cpu())
                     applied_mask = applied_mask[0].detach().cpu()
                     wandb_dump_img([view_raw, applied_mask], "Masks")
