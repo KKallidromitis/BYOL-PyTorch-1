@@ -35,8 +35,8 @@ class BYOLModel(torch.nn.Module):
         # self.over_lap_mask = config['data'].get('over_lap_mask',True)
         self._initializes_target_network()
         self.feature_resolution =  config['model']['backbone']['feature_resolution']
-        self.mask_size = config['model']['decoder']['output_dim']
         self.batch_size = config['data']['train_batch_size']
+        self.mask_size = config['model']['decoder']['output_dim']
         self.mask_init = self.generate_init_mask(self.batch_size).to('cuda')
         self.gamma = 0.4
         # self.rank = config['rank']
@@ -100,8 +100,8 @@ class BYOLModel(torch.nn.Module):
             roi_batch_size = roi_t.shape[0]
             rois_1 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
             rois_2 = torch.empty((roi_batch_size, 5), dtype=torch.float, device='cuda')
-            rois_1[:, 0] = torch.arange(roi_batch_size, device='cuda')
-            rois_2[:, 0] = torch.arange(roi_batch_size, device='cuda')
+            rois_1[:, 0] = torch.arange(roi_batch_size)
+            rois_2[:, 0] = torch.arange(roi_batch_size)
             for j in range(roi_batch_size):
                 rois_1[j, 1:] = roi_t[j,  :1, :4].index_select(-1, idx)*mask_dim  # roi_t = B X 3 X 5, rois_1 = B X 1 X 4
                 rois_2[j, 1:] = roi_t[j, 1:2, :4].index_select(-1, idx)*mask_dim
@@ -121,20 +121,28 @@ class BYOLModel(torch.nn.Module):
         idx = torch.LongTensor([1,0,3,2]).cuda()
 
         if pre_target_z is None:
-            mask_raw = self.mask_init
+            mask_raw = self.mask_init.detach().clone()
+            assert mask_raw.requires_grad == False
         else:
-            # mask_raw = self.decoder(pre_target_z[:batch_size])
-            mask_raw = (1 - self.gamma)*self.mask_init + self.gamma*self.decoder(pre_target_z[:batch_size])
-        mask_1, mask_2, mask_raw = self.form_mask(mask_raw.to('cuda'), roi_t, idx)
+            mask_raw = (1 - self.gamma)*self.mask_init.detach() + self.gamma*self.decoder(pre_target_z[:batch_size])
+            assert self.mask_init.requires_grad == False
+            assert mask_raw.requires_grad
+        assert mask_raw.is_cuda
+        mask_1, mask_2, mask_raw = self.form_mask(mask_raw, roi_t, idx)
         masks = torch.cat([mask_1, mask_2])
         masks_inv = torch.cat([mask_2, mask_1])
+        assert masks.is_cuda
+        assert masks_inv.is_cuda
 
         # online network forward
         if pre_enc_q is None:
             enc_q = self.online_encoder(torch.cat([view1, view2]))
+            assert enc_q.is_cuda
         else:
-            enc_q = pre_enc_q # .detach().clone()
-        q = self.online_projector(enc_q, masks.to('cuda'))
+            enc_q = pre_enc_q.detach()
+            assert enc_q.is_cuda
+            assert enc_q is not pre_enc_q
+        q = self.online_projector(enc_q, masks)
         q = self.predictor(q)
 
         # target network forward
@@ -142,10 +150,11 @@ class BYOLModel(torch.nn.Module):
             self._update_target_network(mm)
             if pre_target_enc_z is None:
                 target_enc_z = self.target_encoder(torch.cat([view2, view1]))
+                assert target_enc_z.is_cuda
             else:
-                target_enc_z = pre_target_enc_z # .detach().clone()
-            target_z = self.target_projector(target_enc_z, masks_inv.to('cuda'))
-            # target_z = target_z.detach().clone()
+                target_enc_z = pre_target_enc_z # .detach()
+                assert target_enc_z.is_cuda
+            target_z = self.target_projector(target_enc_z, masks_inv)
 
         converted_idx = torch.argmax(mask_raw, 1).detach() # B x H x W
         return q, enc_q, target_z, target_enc_z, masks, converted_idx #, mask_1, mask_2

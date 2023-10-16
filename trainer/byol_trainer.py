@@ -262,9 +262,9 @@ class BYOLTrainer():
             data_time.update(time.time() - end)
             #breakpoint()
 
-            pre_enc_q = None
-            pre_target_enc_z = None
-            pre_target_z = None
+            enc_q = None
+            target_enc_z = None
+            target_z = None
             # print("steps:", self.steps)
             # if(self.steps == 60):
             #     import pdb; pdb.set_trace();
@@ -274,12 +274,9 @@ class BYOLTrainer():
                 #breakpoint()
                 q, enc_q, target_z, target_enc_z, down_sampled_masks, applied_mask = self.model(
                 # q, target_z,pinds, tinds,down_sampled_masks,raw_mask,mask_target,num_segs,applied_mask = self.model(
-                    view1, view2, self.mm, diff_transfrom, pre_enc_q, pre_target_enc_z, pre_target_z
+                    view1, view2, self.mm, diff_transfrom, enc_q, target_enc_z, target_z
                     # view1, view2, self.mm, input_masks,view_raw,diff_transfrom,slic_labelmap,use_masknet,full_view_prior_mask,clustering_k=clustering_k
                 )
-                pre_enc_q = enc_q.detach().clone()
-                pre_target_enc_z = target_enc_z.detach().clone()
-                pre_target_z = target_z.detach().clone()
                 forward_time.update(time.time() - tflag)
 
                 tflag = time.time()
